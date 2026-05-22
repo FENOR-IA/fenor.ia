@@ -1,0 +1,358 @@
+#!/bin/bash
+# Fenor — cria novo app em DEV
+set -e
+
+APP=$1
+DESCRIPTION="${2:-}"
+source /etc/fenor/.env
+
+# Lê configurações do banco
+GITHUB_TOKEN=$(sudo -u postgres psql -d fenor -t -c "SELECT value FROM fenor_settings WHERE key='GITHUB_TOKEN'" 2>/dev/null | tr -d ' \n')
+GITHUB_ORG=$(sudo -u postgres psql -d fenor -t -c "SELECT value FROM fenor_settings WHERE key='GITHUB_ORG'" 2>/dev/null | tr -d ' \n')
+ANTHROPIC_API_KEY=$(sudo -u postgres psql -d fenor -t -c "SELECT value FROM fenor_settings WHERE key='ANTHROPIC_API_KEY'" 2>/dev/null | tr -d ' \n')
+
+if [ -z "$APP" ]; then
+  echo ""
+  echo "  Uso: newapp nome-do-app [descrição]"
+  echo ""
+  echo "  Exemplos:"
+  echo "    newapp meu-crm"
+  echo "    newapp clinica-central \"Sistema de gestão de clínicas\""
+  echo ""
+  exit 1
+fi
+
+APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+DB_SCHEMA="${APP_SAFE}_dev"
+DB_USER="${APP_SAFE}_dev_user"
+DB_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 20)
+APP_PATH="$APPS_PATH/dev/$APP"
+SYS_USER="fenor_${APP_SAFE}_dev"
+
+# Protocolo: http local, https quando Cloudflare configurado
+[ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
+
+echo ""
+echo "  Fenor — Criando app: $APP"
+echo "  ────────────────────────────────────"
+
+# 1. Pasta + usuário de sistema isolado
+mkdir -p "$APP_PATH"
+id "$SYS_USER" &>/dev/null || useradd -r -M -s /bin/bash -d "$APP_PATH" "$SYS_USER"
+usermod -aG www-data "$SYS_USER"
+chown -R "$SYS_USER:www-data" "$APP_PATH"
+chmod -R 775 "$APP_PATH"
+echo "  ✓ Pasta: $APP_PATH"
+echo "  ✓ Usuário: $SYS_USER"
+
+# 2. PostgreSQL
+sudo -u postgres psql -d fenor <<SQL
+CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;
+DO \$\$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
+    CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';
+  END IF;
+END \$\$;
+REVOKE ALL ON SCHEMA public FROM $DB_USER;
+GRANT USAGE, CREATE ON SCHEMA $DB_SCHEMA TO $DB_USER;
+ALTER USER $DB_USER SET search_path TO $DB_SCHEMA;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT ALL ON TABLES TO $DB_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT ALL ON SEQUENCES TO $DB_USER;
+-- fenor_apps_viewer: acesso de leitura/escrita ao schema do app (integração entre apps)
+DO \$\$ BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'fenor_apps_viewer') THEN
+    GRANT USAGE ON SCHEMA $DB_SCHEMA TO fenor_apps_viewer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT ALL ON TABLES TO fenor_apps_viewer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT ALL ON SEQUENCES TO fenor_apps_viewer;
+  END IF;
+END \$\$;
+SQL
+echo "  ✓ Banco: schema $DB_SCHEMA"
+
+# 3. Terminal isolado por app
+for TERM_PORT in $(seq 7700 7999); do
+  ss -tlnp | grep -q ":$TERM_PORT " || break
+done
+
+# Atualiza /etc/fenor/ttyd.env com a API key atual
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+  echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > /etc/fenor/ttyd.env
+  chmod 644 /etc/fenor/ttyd.env
+fi
+
+cat > /etc/systemd/system/ttyd-${APP_SAFE}-dev.service <<UNIT
+[Unit]
+Description=ttyd terminal — $APP (dev)
+After=network.target
+
+[Service]
+User=$SYS_USER
+WorkingDirectory=$APP_PATH
+Environment=HOME=$APP_PATH
+EnvironmentFile=-/etc/fenor/ttyd.env
+ExecStart=/usr/local/bin/ttyd --port $TERM_PORT --interface 127.0.0.1 --writable bash
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable ttyd-${APP_SAFE}-dev &>/dev/null
+systemctl start ttyd-${APP_SAFE}-dev 2>&1 || warn "ttyd não iniciou — verifique: systemctl status ttyd-${APP_SAFE}-dev"
+
+cat > /etc/nginx/conf.d/terminal-${APP_SAFE}-dev.conf <<NGINX
+server {
+    listen 80;
+    server_name terminal.$APP.dev.$BASE_DOMAIN;
+    location / {
+        proxy_pass http://127.0.0.1:$TERM_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_read_timeout 43200s;
+    }
+}
+NGINX
+nginx -t && systemctl reload nginx
+echo "  ✓ Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN (porta $TERM_PORT)"
+
+# 4. .env
+cat > "$APP_PATH/.env" <<ENV
+APP_NAME=$APP
+APP_ENV=dev
+APP_URL=$PROTO://$APP.dev.$BASE_DOMAIN
+TERMINAL_URL=$PROTO://terminal.$APP.dev.$BASE_DOMAIN
+TERMINAL_PORT=$TERM_PORT
+
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_NAME=fenor
+DB_SCHEMA=$DB_SCHEMA
+DB_USER=$DB_USER
+DB_PASS=$DB_PASS
+ENV
+chown "$SYS_USER:www-data" "$APP_PATH/.env"
+chmod 640 "$APP_PATH/.env"
+echo "  ✓ .env configurado"
+
+# 4. Estrutura front/ e back/
+BOILERPLATE_DIR=$(dirname "$0")/../boilerplate
+if [ -d "$BOILERPLATE_DIR" ]; then
+  cp -r "$BOILERPLATE_DIR/." "$APP_PATH/"
+  echo "  ✓ Boilerplate copiado"
+else
+  # Cria estrutura mínima se não houver boilerplate
+  mkdir -p "$APP_PATH/front" "$APP_PATH/back"
+  cat > "$APP_PATH/front/index.php" <<PHP
+<?php
+echo "<h1>$APP — Front</h1>";
+echo "<p>Ambiente: " . getenv('APP_ENV') . "</p>";
+PHP
+  cat > "$APP_PATH/back/index.php" <<PHP
+<?php
+header('Content-Type: application/json');
+echo json_encode(['app' => '$APP', 'status' => 'ok']);
+PHP
+  echo "  ✓ Estrutura front/ e back/ criada"
+fi
+
+# 5. Memory + CLAUDE.md
+mkdir -p "$APP_PATH/memory/"{progress,context,decisions,log}
+cat > "$APP_PATH/memory/INDEX.md" <<MD
+# $APP — Mapa de Memória
+
+## O que é
+${DESCRIPTION:-Descreva o app aqui}
+
+## Status
+- Criado: $(date '+%d/%m/%Y %H:%M')
+- Ambiente atual: DEV
+- URL: https://$APP.dev.$BASE_DOMAIN
+- Banco: $DB_SCHEMA
+- Próximo passo: ver memory/progress/next.md
+MD
+printf "# Próximos passos\n"  > "$APP_PATH/memory/progress/next.md"
+printf "# Concluído\n"        > "$APP_PATH/memory/progress/done.md"
+printf "# Bloqueadores\n"     > "$APP_PATH/memory/progress/blockers.md"
+
+cat > "$APP_PATH/CLAUDE.md" <<MD
+# $APP
+
+## Descrição
+${DESCRIPTION:-Sem descrição}
+
+## Ambiente
+- Env: DEV
+- URL: https://$APP.dev.$BASE_DOMAIN
+- Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN
+- Banco: schema \`$DB_SCHEMA\` (PostgreSQL)
+- Usuário sistema: \`$SYS_USER\`
+- Diretório: $APP_PATH
+
+## Stack
+- PHP + Nginx
+- PostgreSQL — schema isolado por ambiente
+- Cloudflare Tunnel (SSL automático)
+
+## Estrutura
+\`\`\`
+$APP/
+├── front/        → views PHP, CSS, JS
+├── back/         → API REST PHP
+├── memory/       → contexto entre sessões (INDEX.md, progress/, log/)
+├── CLAUDE.md     → este arquivo
+└── .env          → credenciais (nunca commitar)
+\`\`\`
+
+## Regras
+- Nunca commitar o arquivo .env
+- Nunca acessar schema de outro app
+- **Nunca acessar o banco fenor diretamente** — ele contém dados internos da plataforma (API keys, senhas). Use apenas o schema \`$DB_SCHEMA\` com as credenciais em \`.env\`
+- Salvar progresso em memory/log/$(date '+%Y-%m-%d').md ao final de cada sessão
+MD
+echo "  ✓ Memória e CLAUDE.md inicializados"
+
+# 6. SSH Deploy Key (só se houver repositório GitHub configurado ou para deixar pronto)
+KEY_DIR="/etc/fenor/keys"
+KEY_FILE="$KEY_DIR/${APP_SAFE}"
+GITHUB_REPO=$(sudo -u postgres psql -d fenor -t -c \
+  "SELECT github_repo FROM fenor_apps WHERE name='$APP'" 2>/dev/null | tr -d ' \n')
+
+if [ -n "$GITHUB_REPO" ]; then
+  mkdir -p "$KEY_DIR"
+  if [ ! -f "$KEY_FILE" ]; then
+    ssh-keygen -t ed25519 -C "fenor-deploy-$APP" -f "$KEY_FILE" -N "" -q
+  fi
+  chmod 640 "$KEY_FILE" "$KEY_FILE.pub"
+  chown root:www-data "$KEY_FILE" "$KEY_FILE.pub"
+
+  # SSH config para o usuário do app
+  mkdir -p "$APP_PATH/.ssh"
+  cat > "$APP_PATH/.ssh/config" <<SSH
+Host github-$APP
+  HostName github.com
+  User git
+  IdentityFile $KEY_FILE
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+SSH
+  chmod 700 "$APP_PATH/.ssh"
+  chmod 600 "$APP_PATH/.ssh/config"
+  chown -R "$SYS_USER:www-data" "$APP_PATH/.ssh"
+
+  # SSH config para o usuário fenor (scripts admin)
+  FENOR_SSH_CONFIG="/home/fenor/.ssh/config"
+  mkdir -p /home/fenor/.ssh
+  if ! grep -q "Host github-$APP" "$FENOR_SSH_CONFIG" 2>/dev/null; then
+    cat >> "$FENOR_SSH_CONFIG" <<SSH
+
+Host github-$APP
+  HostName github.com
+  User git
+  IdentityFile $KEY_FILE
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+SSH
+  fi
+  chmod 700 /home/fenor/.ssh
+  chmod 600 "$FENOR_SSH_CONFIG" 2>/dev/null || true
+  chown -R fenor:fenor /home/fenor/.ssh 2>/dev/null || true
+
+  echo "  ✓ Chave SSH gerada: $KEY_FILE.pub"
+
+  cat >> "$APP_PATH/CLAUDE.md" <<MD
+
+## GitHub
+- Repositório: $GITHUB_REPO
+- Deploy Key: \`$KEY_FILE.pub\`
+- Para conectar: adicione a chave pública como Deploy Key no GitHub (com write access)
+MD
+fi
+
+# 7. Git + primeiro push na branch dev
+git config --global --add safe.directory "$APP_PATH" 2>/dev/null || true
+git config --global user.email "fenor@fenor.ia" 2>/dev/null || true
+git config --global user.name "Fenor" 2>/dev/null || true
+cd "$APP_PATH"
+git init -q && git checkout -b dev -q 2>/dev/null || true
+cat > .gitignore <<GIT
+.env
+.ssh/
+storage/
+vendor/
+GIT
+git add .
+git commit -q -m "init: $APP via Fenor"
+echo "  ✓ Git iniciado (branch dev)"
+
+# Lê github_repo do banco e configura remote
+GITHUB_REPO=$(sudo -u postgres psql -d fenor -t -c \
+  "SELECT github_repo FROM fenor_apps WHERE name='$APP'" 2>/dev/null | tr -d ' \n')
+
+if [ -n "$GITHUB_REPO" ]; then
+  ALIAS_URL=$(echo "$GITHUB_REPO" \
+    | sed "s|git@github\.com:|git@github-$APP:|g" \
+    | sed "s|https://github\.com/|git@github-$APP:|g")
+  [ "${ALIAS_URL: -4}" != ".git" ] && ALIAS_URL="${ALIAS_URL}.git"
+  git remote add origin "$ALIAS_URL"
+  if git push -u origin dev -q 2>/dev/null; then
+    echo "  ✓ Primeiro push: branch dev → $GITHUB_REPO"
+  else
+    echo "  ! Push pendente: adicione a deploy key no GitHub e clique em 'Git push' no Studio"
+  fi
+else
+  echo "  ! GitHub: informe o repositório no Studio para fazer o primeiro push"
+fi
+
+# 8. DNS — local (/etc/hosts) ou Cloudflare
+add_dns() {
+  local SUBDOMAIN="$1"
+  local FULL="${SUBDOMAIN}.${BASE_DOMAIN}"
+
+  if [ -z "$CF_TOKEN" ] || [ -z "$CF_ZONE_ID" ]; then
+    grep -qF "$FULL" /etc/hosts 2>/dev/null || echo "127.0.0.1 $FULL" >> /etc/hosts
+    echo "  ✓ DNS local: $FULL"
+  else
+    CF_RESP=$(curl -s -X POST \
+      "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+      -H "Authorization: Bearer $CF_TOKEN" \
+      -H "Content-Type: application/json" \
+      --data "{\"type\":\"CNAME\",\"name\":\"${SUBDOMAIN}\",\"content\":\"$CF_TUNNEL_ID.cfargotunnel.com\",\"proxied\":true}")
+    echo "$CF_RESP" | grep -q '"success":true' \
+      && echo "  ✓ DNS: $FULL" \
+      || echo "  ⚠ DNS: crie manualmente $FULL"
+  fi
+}
+
+add_dns "$APP.dev"
+add_dns "terminal.$APP.dev"
+
+# 9. Chown final — garante que tudo pertence ao usuário do app
+chown -R "$SYS_USER:www-data" "$APP_PATH"
+chmod -R 775 "$APP_PATH"
+chmod 640 "$APP_PATH/.env" 2>/dev/null || true
+echo "  ✓ Permissões ajustadas"
+
+echo ""
+echo "  ════════════════════════════════════"
+echo "  App pronto!"
+echo "  URL:      https://$APP.dev.$BASE_DOMAIN"
+echo "  Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN"
+echo "  Banco:    $DB_SCHEMA"
+echo "  Usuário:  $SYS_USER"
+if [ -n "$GITHUB_REPO" ] && [ -f "$KEY_FILE.pub" ]; then
+echo ""
+echo "  GitHub — próximos passos:"
+echo "  1. No Studio → Editar app → copie a Deploy Key"
+echo "  2. GitHub → repositório → Settings → Deploy Keys → Add (write access)"
+echo "  3. No Studio → Editar app → clique em 'Git push' (branch dev)"
+echo ""
+echo "  Deploy Key: $(cat $KEY_FILE.pub)"
+fi
+echo "  ════════════════════════════════════"
+echo ""
+echo "  Iniciando Claude Code..."
+cd "$APP_PATH" && exec claude

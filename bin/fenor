@@ -1,0 +1,105 @@
+#!/bin/bash
+# Fenor — CLI central
+# Uso: fenor <comando> [args]
+
+CMD=$1
+shift
+
+case "$CMD" in
+
+  new)
+    exec /usr/local/bin/newapp "$@"
+    ;;
+
+  promote)
+    exec /usr/local/bin/fenor-promote "$@"
+    ;;
+
+  status)
+    source /etc/fenor/.env
+    echo ""
+    echo "  Fenor — Status dos apps"
+    echo "  ─────────────────────────────────────────────"
+    printf "  %-25s %-6s %-30s\n" "APP" "ENV" "URL"
+    echo "  ─────────────────────────────────────────────"
+    for env in dev hml prd; do
+      dir="$APPS_PATH/$env"
+      [ -d "$dir" ] || continue
+      for app in $(ls "$dir" 2>/dev/null); do
+        [ -d "$dir/$app" ] || continue
+        envfile="$dir/$app/.env"
+        url=""
+        [ -f "$envfile" ] && url=$(grep APP_URL "$envfile" | cut -d= -f2)
+        printf "  %-25s %-6s %-30s\n" "$app" "$env" "$url"
+      done
+    done
+    echo ""
+    ;;
+
+  logs)
+    APP=$1
+    ENV=${2:-dev}
+    source /etc/fenor/.env
+    LOG_DIR="$APPS_PATH/$ENV/$APP/storage/logs"
+    if [ -d "$LOG_DIR" ]; then
+      tail -f "$LOG_DIR"/*.log 2>/dev/null || echo "  Nenhum log encontrado."
+    else
+      echo "  Diretório de logs não encontrado: $LOG_DIR"
+    fi
+    ;;
+
+  memory)
+    APP=$1
+    ENV=${2:-dev}
+    source /etc/fenor/.env
+    APP_PATH="$APPS_PATH/$ENV/$APP"
+    DATE=$(date +%Y-%m-%d)
+    LOG_FILE="$APP_PATH/memory/log/$DATE.md"
+    mkdir -p "$APP_PATH/memory/log"
+    cat > "$LOG_FILE" <<MD
+# $DATE
+
+## O que foi feito
+
+
+## Decisões tomadas
+
+
+## Próximo passo
+
+
+## Dúvidas em aberto
+
+MD
+    nano "$LOG_FILE"
+    cd "$APP_PATH"
+    git add memory/
+    git commit -q -m "memory: log $DATE" 2>/dev/null || true
+    echo "  ✓ Memória salva e versionada."
+    ;;
+
+  help|--help|-h|"")
+    echo ""
+    echo "  Fenor — CLI de infraestrutura"
+    echo ""
+    echo "  Comandos:"
+    echo "    fenor new <app>          Cria novo app em DEV"
+    echo "    fenor promote <app>      Promove DEV→HML ou HML→PRD"
+    echo "    fenor status             Lista todos os apps e URLs"
+    echo "    fenor logs <app> [env]   Acompanha logs do app"
+    echo "    fenor memory <app> [env] Salva log de sessão"
+    echo ""
+    echo "  Exemplos:"
+    echo "    fenor new meu-crm"
+    echo "    fenor promote meu-crm"
+    echo "    fenor status"
+    echo ""
+    ;;
+
+  *)
+    echo "  Comando desconhecido: $CMD"
+    echo "  Execute 'fenor help' para ver os comandos disponíveis."
+    exit 1
+    ;;
+
+esac

@@ -1,0 +1,4 @@
+studio/.env
+.env
+*.log
+studio/adminer.php
