@@ -72,6 +72,9 @@ echo "  └───────────────────────
 echo ""
 
 # ── VARIÁVEIS ─────────────────────────────────────────
+# Quando executado via curl | bash, stdin é o pipe — redireciona para o terminal
+exec < /dev/tty
+
 echo "  Configure sua instalação:"
 echo ""
 read -p "  Domínio base (ex: meusite.com ou fenor.local): " BASE_DOMAIN
