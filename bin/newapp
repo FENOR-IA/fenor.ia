@@ -38,6 +38,7 @@ echo "  ────────────────────────
 
 # 1. Pasta + usuário de sistema isolado
 mkdir -p "$APP_PATH"
+rm -f /etc/passwd.lock /etc/shadow.lock /etc/group.lock /etc/gshadow.lock 2>/dev/null || true
 id "$SYS_USER" &>/dev/null || useradd -r -M -s /bin/bash -d "$APP_PATH" "$SYS_USER"
 usermod -aG www-data "$SYS_USER"
 chown -R "$SYS_USER:www-data" "$APP_PATH"
