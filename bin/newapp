@@ -28,6 +28,8 @@ DB_USER="${APP_SAFE}_dev_user"
 DB_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 20)
 APP_PATH="$APPS_PATH/dev/$APP"
 SYS_USER="fenor_${APP_SAFE}_dev"
+APP_ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 12)
+APP_ADMIN_HASH=$(php -r "echo password_hash('$APP_ADMIN_PASS', PASSWORD_BCRYPT);")
 
 # Protocolo: http local, https quando Cloudflare configurado
 [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
@@ -69,6 +71,20 @@ DO \$\$ BEGIN
 END \$\$;
 SQL
 echo "  ✓ Banco: schema $DB_SCHEMA"
+
+# Inicializa tabelas do app (boilerplate/database/init.sql)
+if [ -f "$APP_PATH/database/init.sql" ]; then
+  PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -U "$DB_USER" -d fenor \
+    -v ON_ERROR_STOP=1 -f "$APP_PATH/database/init.sql" &>/dev/null || true
+  # Insere admin inicial
+  PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -U "$DB_USER" -d fenor <<SQL 2>/dev/null || true
+SET search_path TO $DB_SCHEMA;
+INSERT INTO users (nome, email, senha_hash, role)
+VALUES ('Administrador', 'admin@$APP.local', '$APP_ADMIN_HASH', 'admin')
+ON CONFLICT (email) DO NOTHING;
+SQL
+  echo "  ✓ Tabelas criadas + admin inicial"
+fi
 
 # 3. Terminal isolado por app
 for TERM_PORT in $(seq 7700 7999); do
@@ -143,21 +159,17 @@ echo "  ✓ .env configurado"
 BOILERPLATE_DIR=$(dirname "$0")/../boilerplate
 if [ -d "$BOILERPLATE_DIR" ]; then
   cp -r "$BOILERPLATE_DIR/." "$APP_PATH/"
+  # Injeta APP_NAME no .env do app
+  echo "" >> "$APP_PATH/.env"
+  echo "APP_NAME=$APP" >> "$APP_PATH/.env"
   echo "  ✓ Boilerplate copiado"
 else
-  # Cria estrutura mínima se não houver boilerplate
   mkdir -p "$APP_PATH/front" "$APP_PATH/back"
   cat > "$APP_PATH/front/index.php" <<PHP
 <?php
-echo "<h1>$APP — Front</h1>";
-echo "<p>Ambiente: " . getenv('APP_ENV') . "</p>";
+echo "<h1>$APP</h1><p>Boilerplate não encontrado. Crie em /boilerplate/.</p>";
 PHP
-  cat > "$APP_PATH/back/index.php" <<PHP
-<?php
-header('Content-Type: application/json');
-echo json_encode(['app' => '$APP', 'status' => 'ok']);
-PHP
-  echo "  ✓ Estrutura front/ e back/ criada"
+  echo "  ✓ Estrutura mínima criada (sem boilerplate)"
 fi
 
 # 5. Memory + CLAUDE.md
@@ -338,10 +350,15 @@ echo "  ✓ Permissões ajustadas"
 echo ""
 echo "  ════════════════════════════════════"
 echo "  App pronto!"
-echo "  URL:      https://$APP.dev.$BASE_DOMAIN"
+echo "  URL:      $PROTO://$APP.dev.$BASE_DOMAIN"
 echo "  Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN"
 echo "  Banco:    $DB_SCHEMA"
 echo "  Usuário:  $SYS_USER"
+echo ""
+echo "  Acesso ao painel do app:"
+echo "  Login: admin@$APP.local"
+echo "  Senha: $APP_ADMIN_PASS"
+echo "  (troque a senha após o primeiro acesso)"
 if [ -n "$GITHUB_REPO" ] && [ -f "$KEY_FILE.pub" ]; then
 echo ""
 echo "  GitHub — próximos passos:"
