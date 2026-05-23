@@ -28,6 +28,17 @@ echo ""
 . /etc/os-release 2>/dev/null || true
 [[ "$ID" == "ubuntu" ]] || warn "Testado no Ubuntu. Outros sistemas podem funcionar."
 
+if [ -f /etc/fenor/.env ]; then
+  SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+  echo "  Fenor já está instalado nesta VPS."
+  echo ""
+  echo "  Acesse: http://$SERVER_IP"
+  echo ""
+  echo "  Para reinstalar do zero, remova /etc/fenor/.env e rode novamente."
+  echo ""
+  exit 0
+fi
+
 # ── VALORES AUTOMÁTICOS ───────────────────────────────
 SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null \
   || curl -s --connect-timeout 5 https://ifconfig.me 2>/dev/null \
