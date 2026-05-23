@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════
 # FENOR — Instalação da Infraestrutura
 # Ubuntu 24.04 LTS
-# Uso: bash <(curl -fsSL https://fenor.ia.br/install.sh)
+# Uso: curl -fsSL https://fenor.ia.br/install.sh -o /tmp/fenor.sh && bash /tmp/fenor.sh
 # ═══════════════════════════════════════════════════════
 
 set -e
