@@ -55,7 +55,7 @@ echo "  ✓ Código copiado de $FROM para $TO"
 echo "  ✓ Usuário: $SYS_USER"
 
 # 2. Novo schema no banco
-sudo -u postgres psql -d fenor <<SQL
+su - postgres -c "psql -d fenor" <<SQL
 CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
@@ -153,7 +153,7 @@ echo "  ✓ .env configurado para $TO"
 # 4. Seed data (se existir)
 SEED_FILE="$TO_PATH/database/seeds/init.sql"
 if [ -f "$SEED_FILE" ]; then
-  sudo -u postgres psql -d fenor -c "SET search_path TO $DB_SCHEMA;" -f "$SEED_FILE" &>/dev/null
+  su - postgres -c "psql -d fenor -c \"SET search_path TO $DB_SCHEMA;\" -f \"$SEED_FILE\"" &>/dev/null
   echo "  ✓ Seed data aplicada ($SEED_FILE)"
 fi
 

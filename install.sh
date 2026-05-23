@@ -275,10 +275,10 @@ GRANT ALL PRIVILEGES ON fenor.* TO 'fenor_studio'@'localhost';
 SQL
     ok "MySQL: database fenor + tabelas criadas"
 else
-    sudo -u postgres psql -c "CREATE DATABASE fenor;" &>/dev/null || true
-    sudo -u postgres psql -c "CREATE USER fenor_studio WITH PASSWORD '$DB_STUDIO_PASS';" &>/dev/null || true
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fenor TO fenor_studio;" &>/dev/null || true
-    sudo -u postgres psql -d fenor <<SQL
+    su - postgres -c "psql -c \"CREATE DATABASE fenor;\"" &>/dev/null || true
+    su - postgres -c "psql -c \"CREATE USER fenor_studio WITH PASSWORD '$DB_STUDIO_PASS';\"" &>/dev/null || true
+    su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE fenor TO fenor_studio;\"" &>/dev/null || true
+    su - postgres -c "psql -d fenor" <<SQL
 CREATE TABLE IF NOT EXISTS fenor_settings (
     key        VARCHAR(100) NOT NULL,
     value      TEXT         NOT NULL DEFAULT '',

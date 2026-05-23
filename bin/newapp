@@ -7,9 +7,9 @@ DESCRIPTION="${2:-}"
 source /etc/fenor/.env
 
 # Lê configurações do banco
-GITHUB_TOKEN=$(sudo -u postgres psql -d fenor -t -c "SELECT value FROM fenor_settings WHERE key='GITHUB_TOKEN'" 2>/dev/null | tr -d ' \n')
-GITHUB_ORG=$(sudo -u postgres psql -d fenor -t -c "SELECT value FROM fenor_settings WHERE key='GITHUB_ORG'" 2>/dev/null | tr -d ' \n')
-ANTHROPIC_API_KEY=$(sudo -u postgres psql -d fenor -t -c "SELECT value FROM fenor_settings WHERE key='ANTHROPIC_API_KEY'" 2>/dev/null | tr -d ' \n')
+GITHUB_TOKEN=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='GITHUB_TOKEN'\"" 2>/dev/null | tr -d ' \n')
+GITHUB_ORG=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='GITHUB_ORG'\"" 2>/dev/null | tr -d ' \n')
+ANTHROPIC_API_KEY=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='ANTHROPIC_API_KEY'\"" 2>/dev/null | tr -d ' \n')
 
 if [ -z "$APP" ]; then
   echo ""
@@ -46,7 +46,7 @@ echo "  ✓ Pasta: $APP_PATH"
 echo "  ✓ Usuário: $SYS_USER"
 
 # 2. PostgreSQL
-sudo -u postgres psql -d fenor <<SQL
+su - postgres -c "psql -d fenor" <<SQL
 CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
@@ -218,8 +218,7 @@ echo "  ✓ Memória e CLAUDE.md inicializados"
 # 6. SSH Deploy Key (só se houver repositório GitHub configurado ou para deixar pronto)
 KEY_DIR="/etc/fenor/keys"
 KEY_FILE="$KEY_DIR/${APP_SAFE}"
-GITHUB_REPO=$(sudo -u postgres psql -d fenor -t -c \
-  "SELECT github_repo FROM fenor_apps WHERE name='$APP'" 2>/dev/null | tr -d ' \n')
+GITHUB_REPO=$(su - postgres -c "psql -d fenor -t -c \"SELECT github_repo FROM fenor_apps WHERE name='$APP'\"" 2>/dev/null | tr -d ' \n')
 
 if [ -n "$GITHUB_REPO" ]; then
   mkdir -p "$KEY_DIR"
@@ -289,8 +288,7 @@ git commit -q -m "init: $APP via Fenor"
 echo "  ✓ Git iniciado (branch dev)"
 
 # Lê github_repo do banco e configura remote
-GITHUB_REPO=$(sudo -u postgres psql -d fenor -t -c \
-  "SELECT github_repo FROM fenor_apps WHERE name='$APP'" 2>/dev/null | tr -d ' \n')
+GITHUB_REPO=$(su - postgres -c "psql -d fenor -t -c \"SELECT github_repo FROM fenor_apps WHERE name='$APP'\"" 2>/dev/null | tr -d ' \n')
 
 if [ -n "$GITHUB_REPO" ]; then
   ALIAS_URL=$(echo "$GITHUB_REPO" \
