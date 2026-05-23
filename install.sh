@@ -161,13 +161,18 @@ else
   ok "PHP $PHP_VERSION existente (mantido) — socket: $PHP_FPM_SOCK"
 fi
 
-if [ "$DB_DRIVER" = "pgsql" ] && ! command -v psql &>/dev/null; then
-  DEBIAN_FRONTEND=noninteractive apt install -y -qq postgresql postgresql-contrib
-  systemctl enable postgresql &>/dev/null
-  systemctl start postgresql
-  ok "PostgreSQL instalado"
-elif command -v psql &>/dev/null; then
-  ok "PostgreSQL existente (mantido)"
+if [ "$DB_DRIVER" = "pgsql" ]; then
+  # Checa servidor (usuário postgres), não apenas o cliente psql
+  if ! id postgres &>/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt install -y -qq postgresql postgresql-contrib
+    systemctl enable postgresql &>/dev/null
+    systemctl start postgresql
+    ok "PostgreSQL instalado"
+  else
+    systemctl enable postgresql &>/dev/null
+    systemctl start postgresql 2>/dev/null || true
+    ok "PostgreSQL existente (mantido)"
+  fi
 fi
 
 # ── 3. NODE.JS + CLAUDE CODE ──────────────────────────
