@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════
 # FENOR — Instalação da Infraestrutura
 # Ubuntu 24.04 LTS
-# Uso: curl -fsSL https://fenor.ia.br/install.sh | bash
+# Uso: bash <(curl -fsSL https://fenor.ia.br/install.sh)
 # ═══════════════════════════════════════════════════════
 
 set -e
@@ -72,8 +72,10 @@ echo "  └───────────────────────
 echo ""
 
 # ── VARIÁVEIS ─────────────────────────────────────────
-# Quando executado via curl | bash, stdin é o pipe — redireciona para o terminal
-exec < /dev/tty
+# Garante que os reads capturam do terminal mesmo quando executado via pipe
+if ! [ -t 0 ]; then
+  exec < /dev/tty 2>/dev/null || fail "Sem terminal interativo. Use: bash <(curl -fsSL https://fenor.ia.br/install.sh)"
+fi
 
 echo "  Configure sua instalação:"
 echo ""
