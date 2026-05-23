@@ -7,6 +7,16 @@
 
 set -e
 
+# Quando executado via curl | bash, salva o script em /tmp e re-executa com stdin no terminal
+if ! [ -t 0 ]; then
+  FENOR_TMP=$(mktemp /tmp/fenor-install.XXXXXX.sh)
+  cat > "$FENOR_TMP"
+  bash "$FENOR_TMP" < /dev/tty
+  STATUS=$?
+  rm -f "$FENOR_TMP"
+  exit $STATUS
+fi
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; }
@@ -72,11 +82,6 @@ echo "  └───────────────────────
 echo ""
 
 # ── VARIÁVEIS ─────────────────────────────────────────
-# Garante que os reads capturam do terminal mesmo quando executado via pipe
-if ! [ -t 0 ]; then
-  exec < /dev/tty 2>/dev/null || fail "Sem terminal interativo. Use: bash <(curl -fsSL https://fenor.ia.br/install.sh)"
-fi
-
 echo "  Configure sua instalação:"
 echo ""
 read -p "  Domínio base (ex: meusite.com ou fenor.local): " BASE_DOMAIN
