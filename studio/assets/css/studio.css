@@ -169,6 +169,19 @@ body {
 .topbar .user a { color: var(--muted); text-decoration: none; font-size: .78rem; }
 .topbar .user a:hover { color: var(--warm); }
 
+/* Language toggle button */
+.lang-toggle-btn {
+  background: transparent; border: 1.5px solid var(--rule);
+  color: var(--muted); font-size: .72rem; font-weight: 700;
+  padding: .2rem .6rem; border-radius: 5px; cursor: pointer;
+  font-family: inherit; letter-spacing: .04em; transition: all .15s;
+}
+.lang-toggle-btn:hover { border-color: var(--warm); color: var(--warm); }
+
+/* Bilingual visibility helpers */
+[data-lang="pt"] .en-only { display: none !important; }
+[data-lang="en"] .pt-only { display: none !important; }
+
 .content { padding: 1.5rem; }
 
 /* ── STATS ─────────────────────────────── */

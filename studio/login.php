@@ -16,11 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: dashboard.php');
         exit;
     }
-    $error = 'Email ou senha incorretos.';
+    $error = 'Invalid email or password.';
 }
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en" data-lang="pt">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Lado esquerdo — brand */
+    /* Left side — brand */
     .brand-side {
       background: var(--cream);
       border-right: 1px solid var(--rule);
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       max-width: 320px;
     }
 
-    /* Lado direito — form */
+    /* Right side — form */
     .form-side {
       display: flex;
       flex-direction: column;
@@ -161,8 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <!-- FORM -->
   <div class="form-side">
     <div class="form-wrap">
-      <h1>Entrar no Studio</h1>
-      <p class="sub">Painel de controle da plataforma</p>
+      <h1>Sign in to Studio</h1>
+      <p class="sub">Platform control panel / Painel da plataforma</p>
 
       <?php if ($error): ?>
         <div class="alert"><?= htmlspecialchars($error) ?></div>
@@ -176,10 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  placeholder="seu@email.com">
         </div>
         <div class="field">
-          <label for="password">Senha</label>
+          <label for="password">Password / Senha</label>
           <input type="password" id="password" name="password" required placeholder="••••••••">
         </div>
-        <button type="submit" class="btn-submit">Entrar →</button>
+        <button type="submit" class="btn-submit">Sign in / Entrar →</button>
       </form>
 
       <p class="form-foot">fenor.ia.br · Studio v1.0</p>

@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 
 if (empty($_SESSION['user'])) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
 
@@ -15,7 +15,7 @@ $name   = preg_replace('/[^a-z0-9\-]/', '', strtolower(trim($data['name'] ?? '')
 $action = $data['action'] ?? 'get'; // get | test | push
 
 if (!$name) {
-    echo json_encode(['success' => false, 'error' => 'Nome inválido']);
+    echo json_encode(['success' => false, 'error' => 'Invalid name']);
     exit;
 }
 
@@ -31,7 +31,7 @@ if ($action === 'get') {
 if ($action === 'test') {
     $result = shell_exec("ssh -T -o ConnectTimeout=5 git@github-$name 2>&1");
     $ok     = strpos($result ?? '', 'successfully authenticated') !== false;
-    echo json_encode(['success' => $ok, 'output' => trim($result ?? 'Sem resposta')]);
+    echo json_encode(['success' => $ok, 'output' => trim($result ?? 'No response')]);
     exit;
 }
 
@@ -42,7 +42,7 @@ if ($action === 'push') {
     $appPath  = "$appsPath/dev/$name";
 
     if (!is_dir($appPath)) {
-        echo json_encode(['success' => false, 'error' => 'App não provisionado']);
+        echo json_encode(['success' => false, 'error' => 'App not provisioned']);
         exit;
     }
 
@@ -52,4 +52,4 @@ if ($action === 'push') {
     exit;
 }
 
-echo json_encode(['success' => false, 'error' => 'Ação inválida']);
+echo json_encode(['success' => false, 'error' => 'Invalid action']);

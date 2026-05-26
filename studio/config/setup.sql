@@ -1,5 +1,5 @@
--- Fenor — tabela de configurações da plataforma
--- Compatível com PostgreSQL e MySQL
+-- Fenor — platform settings table
+-- Compatible with PostgreSQL and MySQL
 
 CREATE TABLE IF NOT EXISTS fenor_settings (
     key        VARCHAR(100) NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS fenor_settings (
     PRIMARY KEY (key)
 );
 
--- Valores padrão (substituídos pelo install.sh com os valores reais)
+-- Default values (replaced by install.sh with real values)
 INSERT INTO fenor_settings (key, value) VALUES
     ('BASE_DOMAIN',          '')
   , ('ADMIN_EMAIL',          '')
@@ -23,13 +23,15 @@ INSERT INTO fenor_settings (key, value) VALUES
   , ('ANTHROPIC_API_KEY',    '')
 ON CONFLICT (key) DO NOTHING;
 
--- Metadados dos apps criados pela plataforma
+-- Metadata for apps created by the platform
 CREATE TABLE IF NOT EXISTS fenor_apps (
     id           SERIAL PRIMARY KEY,
     name         VARCHAR(100) NOT NULL UNIQUE,
     description  TEXT         NOT NULL DEFAULT '',
     github_repo  VARCHAR(255) NOT NULL DEFAULT '',
     memory_notes TEXT         NOT NULL DEFAULT '',
+    language     VARCHAR(5)   NOT NULL DEFAULT 'pt',   -- pt | en
     status       VARCHAR(20)  NOT NULL DEFAULT 'registered',
+    config       JSONB,
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

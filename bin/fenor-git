@@ -1,0 +1,169 @@
+#!/bin/bash
+# Fenor — Git operations for apps
+source /etc/fenor/.env
+
+APP=$1
+ACTION=$2
+MESSAGE="${3:-Update $(date '+%Y-%m-%d %H:%M')}"
+
+APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+APP_PATH="$APPS_PATH/dev/$APP"
+SYS_USER="fenor_${APP_SAFE}_dev"
+
+if [ ! -d "$APP_PATH/.git" ]; then
+  echo "! Git repository not initialized."
+  exit 1
+fi
+
+rungit() {
+  sudo -u "$SYS_USER" git -C "$APP_PATH" "$@" 2>&1
+}
+
+case "$ACTION" in
+
+  status)
+    BRANCH=$(rungit branch --show-current 2>/dev/null || echo 'dev')
+    LAST=$(rungit log -1 --format='%h|%s|%cr' 2>/dev/null || echo '||')
+    CHANGED=$(rungit status --short 2>/dev/null | wc -l | tr -d ' ')
+    REMOTE=$(rungit remote get-url origin 2>/dev/null || echo '')
+    echo "branch:$BRANCH"
+    echo "last:$LAST"
+    echo "changed:$CHANGED"
+    echo "remote:$REMOTE"
+    ;;
+
+  pull)
+    REMOTE=$(sudo -u "$SYS_USER" git -C "$APP_PATH" remote get-url origin 2>/dev/null || echo '')
+    if [ -z "$REMOTE" ]; then
+      echo "! GitHub não configurado. Adicione o repositório no Studio."
+      exit 1
+    fi
+    # Garante que está na branch dev
+    CURRENT_BRANCH=$(sudo -u "$SYS_USER" git -C "$APP_PATH" branch --show-current 2>/dev/null | tr -d ' \n')
+    if [ -n "$CURRENT_BRANCH" ] && [ "$CURRENT_BRANCH" != "dev" ]; then
+      echo "! Você está na branch '$CURRENT_BRANCH', mas o Fenor usa somente a branch 'dev'."
+      echo "! Para corrigir, abra o terminal e execute:"
+      echo "!   git checkout dev"
+      exit 1
+    fi
+    echo "  Conectando ao GitHub..."
+    # Fetch silencioso — só captura erros
+    FETCH_ERR=$(sudo -u "$SYS_USER" git -C "$APP_PATH" fetch origin 2>&1)
+    FETCH_EXIT=$?
+    if [ $FETCH_EXIT -ne 0 ]; then
+      echo "! Não foi possível acessar o GitHub."
+      echo "! Verifique se o token ainda é válido em Configurações → GitHub."
+      exit 1
+    fi
+    echo "  ✓ Repositório verificado"
+    # Verifica se a branch dev existe no remoto — se não, cria agora
+    if ! sudo -u "$SYS_USER" git -C "$APP_PATH" show-ref --verify --quiet refs/remotes/origin/dev 2>/dev/null; then
+      echo "  Branch 'dev' não existe no GitHub — criando agora..."
+      CREATE_OUT=$(sudo -u "$SYS_USER" git -C "$APP_PATH" push -u origin dev 2>&1)
+      CREATE_EXIT=$?
+      if [ $CREATE_EXIT -ne 0 ]; then
+        echo "$CREATE_OUT"
+        echo "! Não foi possível criar a branch 'dev' no GitHub."
+        echo "! Verifique se o token tem permissão de escrita no repositório."
+        exit 1
+      fi
+      echo "  ✓ Branch 'dev' criada no GitHub com sucesso"
+      echo "  ✓ Seu código já está atualizado — nada novo para baixar"
+      exit 0
+    fi
+    # Verifica divergência (ambos têm commits que o outro não tem)
+    BEHIND=$(sudo -u "$SYS_USER" git -C "$APP_PATH" rev-list --count HEAD..origin/dev 2>/dev/null | tr -d ' \n' || echo '0')
+    AHEAD=$(sudo -u "$SYS_USER" git -C "$APP_PATH" rev-list --count origin/dev..HEAD 2>/dev/null | tr -d ' \n' || echo '0')
+    if [ "${AHEAD:-0}" -gt 0 ] && [ "${BEHIND:-0}" -gt 0 ]; then
+      echo "! O histórico local e o do GitHub divergiram — não é possível unir automaticamente."
+      echo "! Isso acontece quando mudanças foram feitas nos dois lados sem sincronizar."
+      echo "! Para resolver, abra o terminal e execute:"
+      echo "!   git pull origin dev --rebase"
+      echo "! Se aparecerem conflitos, o Claude Code pode te ajudar a resolvê-los."
+      exit 1
+    fi
+    if [ "${BEHIND:-0}" = "0" ]; then
+      echo "  ✓ Seu código já está atualizado — nada novo para baixar"
+      exit 0
+    fi
+    echo "  ${BEHIND} atualização(ões) disponível(eis) no GitHub"
+    PULL_OUT=$(sudo -u "$SYS_USER" git -C "$APP_PATH" pull origin dev 2>&1)
+    PULL_EXIT=$?
+    if [ $PULL_EXIT -ne 0 ]; then
+      echo "$PULL_OUT"
+      echo "! Falha ao baixar. Abra o terminal e tente:"
+      echo "!   git pull origin dev --rebase"
+      exit 1
+    fi
+    echo "  ✓ Código atualizado com sucesso"
+    ;;
+
+  push)
+    REMOTE=$(rungit remote get-url origin 2>/dev/null || echo '')
+    if [ -z "$REMOTE" ]; then
+      echo "! GitHub não configurado. Adicione o repositório no Studio."
+      exit 1
+    fi
+    # Garante que está na branch dev
+    CURRENT_BRANCH=$(rungit branch --show-current 2>/dev/null | tr -d ' \n' || echo '')
+    if [ -n "$CURRENT_BRANCH" ] && [ "$CURRENT_BRANCH" != "dev" ]; then
+      echo "! Você está na branch '$CURRENT_BRANCH', mas o Fenor envia somente pela branch 'dev'."
+      echo "! Para corrigir, abra o terminal e execute: git checkout dev"
+      exit 1
+    fi
+    CHANGED=$(rungit status --short 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$CHANGED" = "0" ]; then
+      echo "  Nenhuma alteração encontrada."
+      echo "  ✓ O código já está atualizado no GitHub"
+      exit 0
+    fi
+    echo "  ${CHANGED} arquivo(s) com alterações"
+    if ! rungit add -A 2>&1; then
+      echo "! Falha ao preparar os arquivos."
+      exit 1
+    fi
+    echo "  ✓ Arquivos preparados"
+    rungit config user.email "studio@fenor.local" 2>/dev/null || true
+    rungit config user.name  "Fenor Studio"       2>/dev/null || true
+    if ! rungit commit -m "$MESSAGE" 2>&1; then
+      echo "! Falha ao criar o commit."
+      exit 1
+    fi
+    echo "  ✓ Versão criada"
+    # -u cria a branch remota se não existir e configura o upstream
+    PUSH_OUT=$(sudo -u "$SYS_USER" git -C "$APP_PATH" push -u origin dev 2>&1)
+    PUSH_EXIT=$?
+    if [ $PUSH_EXIT -ne 0 ]; then
+      echo "$PUSH_OUT"
+      echo "! Falha ao enviar. Verifique se o token tem permissão de escrita no repositório."
+      exit 1
+    fi
+    echo "  ✓ Enviado para o GitHub com sucesso"
+    ;;
+
+  set-remote)
+    NEW_URL="$3"
+    if [ -z "$NEW_URL" ]; then
+      echo "! Remote URL not provided."
+      exit 1
+    fi
+    echo "  Setting remote origin..."
+    if rungit remote | grep -q '^origin$'; then
+      if ! rungit remote set-url origin "$NEW_URL"; then
+        echo "! Failed to update remote URL."
+        exit 1
+      fi
+    else
+      if ! rungit remote add origin "$NEW_URL"; then
+        echo "! Failed to add remote."
+        exit 1
+      fi
+    fi
+    echo "  ✓ Remote configured"
+    ;;
+
+  *)
+    echo "! Unknown action: $ACTION"
+    exit 1
+    ;;
+esac

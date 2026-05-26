@@ -1,33 +1,33 @@
 #!/bin/bash
-# Fenor — promove app DEV → HML → PRD
+# Fenor — promotes app DEV → HML → PRD
 set -e
 
 APP=$1
 source /etc/fenor/.env
 
 if [ -z "$APP" ]; then
-  echo "  Uso: fenor promote nome-do-app"
+  echo "  Usage: fenor promote <app-name>"
   exit 1
 fi
 
 APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
 
-# Protocolo: http local, https quando Cloudflare configurado
+# Protocol: http locally, https when Cloudflare is configured
 [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
 
-# Detecta ambiente atual e define destino
+# Detect current environment and set target
 if [ -d "$APPS_PATH/dev/$APP" ] && [ ! -d "$APPS_PATH/hml/$APP" ]; then
   FROM="dev"; TO="hml"
 elif [ -d "$APPS_PATH/hml/$APP" ] && [ ! -d "$APPS_PATH/prd/$APP" ]; then
   FROM="hml"; TO="prd"
 elif [ -d "$APPS_PATH/prd/$APP" ]; then
   echo ""
-  echo "  $APP já está em produção (PRD)."
-  echo "  Para atualizar PRD, use: fenor deploy $APP"
+  echo "  $APP is already in production (PRD)."
+  echo "  To update PRD use: fenor deploy $APP"
   echo ""
   exit 0
 else
-  echo "  App '$APP' não encontrado em DEV."
+  echo "  App '$APP' not found in DEV."
   exit 1
 fi
 
@@ -39,11 +39,11 @@ DB_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 20)
 SYS_USER="fenor_${APP_SAFE}_${TO}"
 
 echo ""
-echo "  Fenor — Promovendo: $APP"
+echo "  Fenor — Promoting: $APP"
 echo "  $FROM → $TO"
 echo "  ────────────────────────────────────"
 
-# 1. Copia código + usuário de sistema isolado
+# 1. Copy code and create isolated system user
 mkdir -p "$TO_PATH"
 rsync -a --exclude='.env' --exclude='storage/' --exclude='.git/' \
   "$FROM_PATH/" "$TO_PATH/"
@@ -51,10 +51,10 @@ id "$SYS_USER" &>/dev/null || useradd -r -M -s /bin/bash -d "$TO_PATH" "$SYS_USE
 usermod -aG www-data "$SYS_USER"
 chown -R "$SYS_USER:www-data" "$TO_PATH"
 chmod -R 775 "$TO_PATH"
-echo "  ✓ Código copiado de $FROM para $TO"
-echo "  ✓ Usuário: $SYS_USER"
+echo "  ✓ Code copied from $FROM to $TO"
+echo "  ✓ System user: $SYS_USER"
 
-# 2. Novo schema no banco
+# 2. New isolated database schema
 su - postgres -c "psql -d fenor" <<SQL
 CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;
 DO \$\$ BEGIN
@@ -67,7 +67,7 @@ GRANT USAGE, CREATE ON SCHEMA $DB_SCHEMA TO $DB_USER;
 ALTER USER $DB_USER SET search_path TO $DB_SCHEMA;
 ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT ALL ON TABLES TO $DB_USER;
 ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT ALL ON SEQUENCES TO $DB_USER;
--- fenor_apps_viewer: acesso de integração ao schema promovido
+-- fenor_apps_viewer: read/write access for cross-app integration
 DO \$\$ BEGIN
   IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'fenor_apps_viewer') THEN
     GRANT USAGE ON SCHEMA $DB_SCHEMA TO fenor_apps_viewer;
@@ -76,9 +76,9 @@ DO \$\$ BEGIN
   END IF;
 END \$\$;
 SQL
-echo "  ✓ Banco: schema $DB_SCHEMA (limpo)"
+echo "  ✓ Database: schema $DB_SCHEMA (clean)"
 
-# 3. Terminal isolado para o novo ambiente
+# 3. Isolated terminal for the new environment
 for TERM_PORT in $(seq 7700 7999); do
   ss -tlnp | grep -q ":$TERM_PORT " || break
 done
@@ -129,9 +129,9 @@ server {
 }
 NGINX
 nginx -t && systemctl reload nginx
-echo "  ✓ Terminal: $TERM_URL (porta $TERM_PORT)"
+echo "  ✓ Terminal: $TERM_URL (port $TERM_PORT)"
 
-# 4. .env do novo ambiente
+# 4. .env for the new environment
 cat > "$TO_PATH/.env" <<ENV
 APP_NAME=$APP
 APP_ENV=$TO
@@ -148,16 +148,16 @@ DB_PASS=$DB_PASS
 ENV
 chown "$SYS_USER:www-data" "$TO_PATH/.env"
 chmod 640 "$TO_PATH/.env"
-echo "  ✓ .env configurado para $TO"
+echo "  ✓ .env configured for $TO"
 
-# 4. Seed data (se existir)
+# 5. Seed data (if present)
 SEED_FILE="$TO_PATH/database/seeds/init.sql"
 if [ -f "$SEED_FILE" ]; then
   su - postgres -c "psql -d fenor -c \"SET search_path TO $DB_SCHEMA;\" -f \"$SEED_FILE\"" &>/dev/null
-  echo "  ✓ Seed data aplicada ($SEED_FILE)"
+  echo "  ✓ Seed data applied ($SEED_FILE)"
 fi
 
-# 5. Git
+# 6. Git init for the new environment
 cd "$TO_PATH"
 git config --global --add safe.directory "$TO_PATH" 2>/dev/null || true
 git config --global user.email "fenor@fenor.ia" 2>/dev/null || true
@@ -170,16 +170,16 @@ vendor/
 GIT
 git add .
 git commit -q -m "promote: $APP $FROM → $TO"
-echo "  ✓ Git iniciado para $TO"
+echo "  ✓ Git initialized for $TO"
 
-# 6. DNS — local (/etc/hosts) ou Cloudflare
+# 7. DNS — local (/etc/hosts) or Cloudflare
 add_dns() {
   local SUBDOMAIN="$1"
   local FULL="${SUBDOMAIN}.${BASE_DOMAIN}"
 
   if [ -z "$CF_TOKEN" ] || [ -z "$CF_ZONE_ID" ]; then
     grep -qF "$FULL" /etc/hosts 2>/dev/null || echo "127.0.0.1 $FULL" >> /etc/hosts
-    echo "  ✓ DNS local: $FULL"
+    echo "  ✓ Local DNS: $FULL"
   else
     CF_RESP=$(curl -s -X POST \
       "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
@@ -188,7 +188,7 @@ add_dns() {
       --data "{\"type\":\"CNAME\",\"name\":\"${SUBDOMAIN}\",\"content\":\"$CF_TUNNEL_ID.cfargotunnel.com\",\"proxied\":true}")
     echo "$CF_RESP" | grep -q '"success":true' \
       && echo "  ✓ DNS: $FULL" \
-      || echo "  ⚠ DNS: crie manualmente $FULL"
+      || echo "  ⚠ DNS: create manually $FULL"
   fi
 }
 
@@ -197,24 +197,24 @@ if [ "$TO" = "hml" ]; then DNS_APP="$APP.hml"; else DNS_APP="$APP"; fi
 add_dns "$DNS_APP"
 add_dns "$TERM_DNS"
 
-# Chown final
+# Final permissions
 chown -R "$SYS_USER:www-data" "$TO_PATH"
 chmod -R 775 "$TO_PATH"
 chmod 640 "$TO_PATH/.env" 2>/dev/null || true
 
 echo ""
 echo "  ════════════════════════════════════"
-echo "  Promoção concluída!"
+echo "  Promotion complete!"
 echo "  URL:      $APP_URL"
 echo "  Terminal: $TERM_URL"
-echo "  Banco:    $DB_SCHEMA (novo, limpo)"
-echo "  Usuário:  $SYS_USER"
+echo "  Database: $DB_SCHEMA (new, clean)"
+echo "  User:     $SYS_USER"
 if [ "$TO" = "hml" ]; then
-echo "  Status:   pronto para aprovação do cliente"
-echo "  Próximo:  fenor promote $APP  (quando aprovado)"
+echo "  Status:   ready for client review"
+echo "  Next:     fenor promote $APP  (when approved)"
 else
-echo "  Status:   em produção"
+echo "  Status:   live in production"
 fi
-echo "  DEV:      $PROTO://$APP.dev.$BASE_DOMAIN (continua ativo)"
+echo "  DEV:      $PROTO://$APP.dev.$BASE_DOMAIN (still active)"
 echo "  ════════════════════════════════════"
 echo ""

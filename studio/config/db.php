@@ -52,7 +52,7 @@ function fenorSetting(string $key, string $default = ''): string {
         $row = $stmt->fetch();
         return $row ? $row['value'] : $default;
     } catch (Throwable $e) {
-        // Tabela ainda não existe — fallback para .env
+        // Table does not exist yet — fallback to .env
         return fenorEnv()[$key] ?? $default;
     }
 }

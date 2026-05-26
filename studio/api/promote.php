@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 
 if (empty($_SESSION['user'])) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
 
@@ -15,14 +15,14 @@ $name = preg_replace('/[^a-z0-9\-]/', '', strtolower(trim($data['name'] ?? '')))
 $to   = in_array($data['to'] ?? '', ['hml', 'prd']) ? $data['to'] : '';
 
 if (!$name || !$to) {
-    echo json_encode(['success' => false, 'error' => 'Parâmetros inválidos']);
+    echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
     exit;
 }
 
 $cmd    = "sudo /usr/local/bin/fenor-promote " . escapeshellarg($name) . " 2>&1";
 $output = shell_exec($cmd);
 
-$success = strpos($output ?? '', 'Promoção concluída') !== false;
+$success = strpos($output ?? '', 'Promotion complete!') !== false;
 
 echo json_encode([
     'success' => $success,

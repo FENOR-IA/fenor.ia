@@ -1,5 +1,5 @@
 <?php
-// Sessão dura 8 horas
+// Session lasts 8 hours
 ini_set('session.gc_maxlifetime', 28800);
 session_set_cookie_params(28800);
 require_once __DIR__ . '/db.php';
@@ -19,5 +19,5 @@ function config(): array {
     ];
 }
 
-// Compatibilidade — permite $config = require 'config.php'
+// Compatibility — allows $config = require 'config.php'
 return config();

@@ -1,13 +1,13 @@
 #!/bin/bash
-# Fenor — salva log de sessão do app
-# Uso: save-memory nome-do-app [dev|hml|prd]
+# Fenor — save session log for an app
+# Usage: save-memory <app-name> [dev|hml|prd]
 
 APP=$1
 ENV=${2:-dev}
 source /etc/fenor/.env
 
 if [ -z "$APP" ]; then
-  echo "  Uso: save-memory nome-do-app [dev|hml|prd]"
+  echo "  Usage: save-memory <app-name> [dev|hml|prd]"
   exit 1
 fi
 
@@ -20,16 +20,16 @@ mkdir -p "$LOG_DIR"
 cat > "$LOG_FILE" <<MD
 # $DATE
 
-## O que foi feito
+## What was done
 
 
-## Decisões tomadas
+## Decisions made
 
 
-## Próximo passo
+## Next step
 
 
-## Dúvidas em aberto
+## Open questions
 
 MD
 
@@ -38,4 +38,4 @@ nano "$LOG_FILE"
 cd "$APPS_PATH/$ENV/$APP"
 git add memory/
 git commit -q -m "memory: log $DATE" 2>/dev/null || true
-echo "  ✓ Memória salva e versionada."
+echo "  ✓ Memory saved and versioned."

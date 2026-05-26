@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 
 if (empty($_SESSION['user'])) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
 
@@ -19,7 +19,7 @@ $github_repo  = trim($data['github_repo']  ?? '');
 $memory_notes = trim($data['memory_notes'] ?? '');
 
 if (!$name) {
-    echo json_encode(['success' => false, 'error' => 'Nome inválido']);
+    echo json_encode(['success' => false, 'error' => 'Invalid name']);
     exit;
 }
 
@@ -28,7 +28,7 @@ try {
     $db->prepare('UPDATE fenor_apps SET description=?, github_repo=?, memory_notes=? WHERE name=?')
        ->execute([$description, $github_repo, $memory_notes, $name]);
 
-    // Se provisionado, atualiza arquivos no disco
+    // If provisioned, update files on disk
     $row = $db->prepare('SELECT status FROM fenor_apps WHERE name=?');
     $row->execute([$name]);
     $app = $row->fetch();
@@ -39,45 +39,45 @@ try {
         $appPath  = "$appsPath/dev/$name";
 
         if (is_dir($appPath)) {
-            // Atualiza CLAUDE.md
+            // Update CLAUDE.md
             $claudeFile = "$appPath/CLAUDE.md";
             if (file_exists($claudeFile)) {
                 $content = file_get_contents($claudeFile);
-                // Substitui bloco Descrição
+                // Replace Description block
                 $content = preg_replace(
-                    '/## Descrição\n.*?(?=\n##|\z)/s',
-                    "## Descrição\n$description\n",
+                    '/## Description\n.*?(?=\n##|\z)/s',
+                    "## Description\n$description\n",
                     $content
                 );
-                // Substitui ou adiciona bloco Notas
-                if (strpos($content, '## Notas') !== false) {
+                // Replace or add Notes block
+                if (strpos($content, '## Notes') !== false) {
                     $content = preg_replace(
-                        '/## Notas\n.*?(?=\n##|\z)/s',
-                        "## Notas\n$memory_notes\n",
+                        '/## Notes\n.*?(?=\n##|\z)/s',
+                        "## Notes\n$memory_notes\n",
                         $content
                     );
                 } elseif ($memory_notes) {
-                    $content .= "\n## Notas\n$memory_notes\n";
+                    $content .= "\n## Notes\n$memory_notes\n";
                 }
                 file_put_contents($claudeFile, $content);
             }
 
-            // Atualiza memory/INDEX.md
+            // Update memory/INDEX.md
             $indexFile = "$appPath/memory/INDEX.md";
             if (file_exists($indexFile)) {
                 $content = file_get_contents($indexFile);
                 $content = preg_replace(
-                    '/## O que é\n.*?(?=\n##|\z)/s',
-                    "## O que é\n$description\n",
+                    '/## What it is\n.*?(?=\n##|\z)/s',
+                    "## What it is\n$description\n",
                     $content
                 );
                 file_put_contents($indexFile, $content);
             }
 
-            // Configura git remote com alias SSH e atualiza .env
+            // Configure git remote with SSH alias and update .env
             if ($github_repo) {
                 $appSafe  = preg_replace('/[^a-z0-9_]/', '_', $name);
-                // Converte URL para alias SSH: git@github-{app}:user/repo.git
+                // Convert URL to SSH alias: git@github-{app}:user/repo.git
                 $aliasUrl = preg_replace('/^git@github\.com:/', "git@github-$name:", $github_repo);
                 $aliasUrl = preg_replace('#^https://github\.com/#', "git@github-$name:", $aliasUrl);
                 if (substr($aliasUrl, -4) !== '.git') $aliasUrl .= '.git';

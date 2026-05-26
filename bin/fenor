@@ -1,6 +1,6 @@
 #!/bin/bash
-# Fenor — CLI central
-# Uso: fenor <comando> [args]
+# Fenor — central CLI dispatcher
+# Usage: fenor <command> [args]
 
 CMD=$1
 shift
@@ -18,7 +18,7 @@ case "$CMD" in
   status)
     source /etc/fenor/.env
     echo ""
-    echo "  Fenor — Status dos apps"
+    echo "  Fenor — App Status"
     echo "  ─────────────────────────────────────────────"
     printf "  %-25s %-6s %-30s\n" "APP" "ENV" "URL"
     echo "  ─────────────────────────────────────────────"
@@ -42,9 +42,9 @@ case "$CMD" in
     source /etc/fenor/.env
     LOG_DIR="$APPS_PATH/$ENV/$APP/storage/logs"
     if [ -d "$LOG_DIR" ]; then
-      tail -f "$LOG_DIR"/*.log 2>/dev/null || echo "  Nenhum log encontrado."
+      tail -f "$LOG_DIR"/*.log 2>/dev/null || echo "  No logs found."
     else
-      echo "  Diretório de logs não encontrado: $LOG_DIR"
+      echo "  Log directory not found: $LOG_DIR"
     fi
     ;;
 
@@ -59,46 +59,46 @@ case "$CMD" in
     cat > "$LOG_FILE" <<MD
 # $DATE
 
-## O que foi feito
+## What was done
 
 
-## Decisões tomadas
+## Decisions made
 
 
-## Próximo passo
+## Next step
 
 
-## Dúvidas em aberto
+## Open questions
 
 MD
     nano "$LOG_FILE"
     cd "$APP_PATH"
     git add memory/
     git commit -q -m "memory: log $DATE" 2>/dev/null || true
-    echo "  ✓ Memória salva e versionada."
+    echo "  ✓ Memory saved and versioned."
     ;;
 
   help|--help|-h|"")
     echo ""
-    echo "  Fenor — CLI de infraestrutura"
+    echo "  Fenor — Infrastructure CLI"
     echo ""
-    echo "  Comandos:"
-    echo "    fenor new <app>          Cria novo app em DEV"
-    echo "    fenor promote <app>      Promove DEV→HML ou HML→PRD"
-    echo "    fenor status             Lista todos os apps e URLs"
-    echo "    fenor logs <app> [env]   Acompanha logs do app"
-    echo "    fenor memory <app> [env] Salva log de sessão"
+    echo "  Commands:"
+    echo "    fenor new <app>          Create new app in DEV"
+    echo "    fenor promote <app>      Promote DEV→HML or HML→PRD"
+    echo "    fenor status             List all apps and URLs"
+    echo "    fenor logs <app> [env]   Tail app logs"
+    echo "    fenor memory <app> [env] Save session log"
     echo ""
-    echo "  Exemplos:"
-    echo "    fenor new meu-crm"
-    echo "    fenor promote meu-crm"
+    echo "  Examples:"
+    echo "    fenor new my-crm"
+    echo "    fenor promote my-crm"
     echo "    fenor status"
     echo ""
     ;;
 
   *)
-    echo "  Comando desconhecido: $CMD"
-    echo "  Execute 'fenor help' para ver os comandos disponíveis."
+    echo "  Unknown command: $CMD"
+    echo "  Run 'fenor help' for available commands."
     exit 1
     ;;
 

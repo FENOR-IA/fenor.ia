@@ -4,85 +4,79 @@ declare(strict_types=1);
 
 define('ROOT', dirname(__DIR__));
 
-// Carrega .env
-foreach (file(ROOT . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $linha) {
-    if (str_starts_with(trim($linha), '#') || !str_contains($linha, '=')) continue;
-    [$chave, $valor] = explode('=', $linha, 2);
-    $_ENV[trim($chave)] = trim($valor);
+// Load .env
+foreach (file(ROOT . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    $line = trim($line);
+    if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) continue;
+    [$key, $value] = explode('=', $line, 2);
+    $_ENV[trim($key)] = trim($value);
 }
 
-// Autoload simples
-spl_autoload_register(function (string $classe) {
+// Simple autoloader
+spl_autoload_register(function (string $class) {
     $dirs = [ROOT . '/src/Config', ROOT . '/src/Auth', ROOT . '/src/Controllers'];
     foreach ($dirs as $dir) {
-        $arquivo = "$dir/$classe.php";
-        if (file_exists($arquivo)) { require_once $arquivo; return; }
+        $file = "$dir/$class.php";
+        if (file_exists($file)) { require_once $file; return; }
     }
 });
 
-Session::iniciar();
+Session::start();
 
-$metodo = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['REQUEST_METHOD'];
 $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri    = rtrim($uri, '/') ?: '/';
 
-// Rotas públicas
-$publicas = ['/login', '/login/entrar'];
+// Public routes (no auth required)
+$publicRoutes = ['/login', '/login/submit'];
 
-if (!Session::estaLogado() && !in_array($uri, $publicas)) {
+if (!Session::isLoggedIn() && !in_array($uri, $publicRoutes)) {
     header('Location: /login');
     exit;
 }
 
-// Roteador
-match (true) {
+// Router
+$m = [];
+if ($uri === '/login' && $method === 'GET') {
+    (new AuthController())->login();
+} elseif ($uri === '/login/submit' && $method === 'POST') {
+    (new AuthController())->loginPost();
+} elseif ($uri === '/logout') {
+    (new AuthController())->logout();
 
-    // Auth
-    $uri === '/login' && $metodo === 'GET'
-        => (new AuthController())->login(),
-    $uri === '/login/entrar' && $metodo === 'POST'
-        => (new AuthController())->loginPost(),
-    $uri === '/logout'
-        => (new AuthController())->logout(),
+} elseif ($uri === '/' || $uri === '/dashboard') {
+    (new DashboardController())->index();
 
-    // Dashboard
-    $uri === '/' || $uri === '/dashboard'
-        => (new DashboardController())->index(),
+} elseif ($uri === '/customers' && $method === 'GET') {
+    (new CustomersController())->index();
+} elseif ($uri === '/customers/new' && $method === 'GET') {
+    (new CustomersController())->create();
+} elseif ($uri === '/customers' && $method === 'POST') {
+    (new CustomersController())->store();
+} elseif (preg_match('#^/customers/(\d+)/edit$#', $uri, $m) && $method === 'GET') {
+    (new CustomersController())->edit((int) $m[1]);
+} elseif (preg_match('#^/customers/(\d+)/delete$#', $uri, $m) && $method === 'POST') {
+    (new CustomersController())->delete((int) $m[1]);
+} elseif (preg_match('#^/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
+    (new CustomersController())->show((int) $m[1]);
+} elseif (preg_match('#^/customers/(\d+)$#', $uri, $m) && $method === 'POST') {
+    (new CustomersController())->update((int) $m[1]);
 
-    // Clientes
-    $uri === '/clientes' && $metodo === 'GET'
-        => (new ClientesController())->index(),
-    $uri === '/clientes/novo' && $metodo === 'GET'
-        => (new ClientesController())->novo(),
-    $uri === '/clientes' && $metodo === 'POST'
-        => (new ClientesController())->salvar(),
-    preg_match('#^/clientes/(\d+)$#', $uri, $m) && $metodo === 'GET'
-        => (new ClientesController())->ver((int) $m[1]),
-    preg_match('#^/clientes/(\d+)/editar$#', $uri, $m) && $metodo === 'GET'
-        => (new ClientesController())->editar((int) $m[1]),
-    preg_match('#^/clientes/(\d+)$#', $uri, $m) && $metodo === 'POST'
-        => (new ClientesController())->atualizar((int) $m[1]),
-    preg_match('#^/clientes/(\d+)/excluir$#', $uri, $m) && $metodo === 'POST'
-        => (new ClientesController())->excluir((int) $m[1]),
+} elseif ($uri === '/users' && $method === 'GET') {
+    (new UsersController())->index();
+} elseif ($uri === '/users/new' && $method === 'GET') {
+    (new UsersController())->create();
+} elseif ($uri === '/users' && $method === 'POST') {
+    (new UsersController())->store();
+} elseif (preg_match('#^/users/(\d+)/edit$#', $uri, $m) && $method === 'GET') {
+    (new UsersController())->edit((int) $m[1]);
+} elseif (preg_match('#^/users/(\d+)$#', $uri, $m) && $method === 'POST') {
+    (new UsersController())->update((int) $m[1]);
 
-    // Usuários (admin)
-    $uri === '/usuarios' && $metodo === 'GET'
-        => (new UsuariosController())->index(),
-    $uri === '/usuarios/novo' && $metodo === 'GET'
-        => (new UsuariosController())->novo(),
-    $uri === '/usuarios' && $metodo === 'POST'
-        => (new UsuariosController())->salvar(),
-    preg_match('#^/usuarios/(\d+)/editar$#', $uri, $m) && $metodo === 'GET'
-        => (new UsuariosController())->editar((int) $m[1]),
-    preg_match('#^/usuarios/(\d+)$#', $uri, $m) && $metodo === 'POST'
-        => (new UsuariosController())->atualizar((int) $m[1]),
-
-    // 404
-    default => (function () {
-        http_response_code(404);
-        $tituloPagina = 'Página não encontrada';
-        require ROOT . '/views/layout.php';
-        echo '<div class="vazio"><i class="bi bi-exclamation-circle"></i><div class="vazio__titulo">404 — Página não encontrada</div></div>';
-        require ROOT . '/views/layout_fim.php';
-    })()
-};
+} else {
+    http_response_code(404);
+    $pageTitle = 'Page not found';
+    require ROOT . '/views/layout.php';
+    echo '<div class="empty"><i class="bi bi-exclamation-circle"></i><div class="empty__title">404 — Page not found</div></div>';
+    require ROOT . '/views/layout_fim.php';
+}

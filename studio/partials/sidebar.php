@@ -1,5 +1,5 @@
 <?php
-// Detecta a página atual para marcar o item ativo
+// Detect current page to mark the active item
 $current = basename($_SERVER['PHP_SELF'], '.php');
 $active  = fn(string $page) => $current === $page ? 'active' : '';
 $domain  = htmlspecialchars($config['base_domain'] ?? '');
@@ -13,10 +13,10 @@ $domain  = htmlspecialchars($config['base_domain'] ?? '');
       <i data-lucide="layout-grid" style="width:16px;height:16px;"></i> Apps
     </a>
     <a href="<?= $baseUrl ?? '' ?>banco.php" target="_blank" rel="noopener" class="<?= $active('banco') ?>">
-      <i data-lucide="database" style="width:16px;height:16px;"></i> Banco de dados
+      <i data-lucide="database" style="width:16px;height:16px;"></i> Database
     </a>
     <a href="<?= $baseUrl ?? '' ?>settings.php" class="<?= $active('settings') ?>">
-      <i data-lucide="settings" style="width:16px;height:16px;"></i> Configurações
+      <i data-lucide="settings" style="width:16px;height:16px;"></i> Settings
     </a>
   </nav>
   <div class="bottom"><?= $domain ?></div>

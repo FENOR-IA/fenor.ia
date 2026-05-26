@@ -25,8 +25,8 @@ if ($appName) {
 $globalEnv = fenorEnv();
 
 if (!empty($appEnv['DB_HOST'])) {
-    // Contexto de app: conecta com as credenciais isoladas do app
-    // O usuário do app só tem acesso ao seu próprio schema (search_path restrito)
+    // App context: connect with the app's isolated credentials
+    // The app user only has access to its own schema (restricted search_path)
     $dbHost   = $appEnv['DB_HOST'];
     $dbPort   = $appEnv['DB_PORT']   ?? '5432';
     $dbUser   = $appEnv['DB_USER']   ?? '';
@@ -34,8 +34,8 @@ if (!empty($appEnv['DB_HOST'])) {
     $dbName   = $appEnv['DB_NAME']   ?? 'fenor';
     $dbDriver = $appEnv['DB_DRIVER'] ?? $globalEnv['DB_DRIVER'] ?? 'pgsql';
 } else {
-    // Contexto geral (sidebar): fenor_apps_viewer — vê todos os schemas de apps,
-    // mas NÃO tem acesso ao schema public (fenor_settings, fenor_apps)
+    // General context (sidebar): fenor_apps_viewer — sees all app schemas,
+    // but has NO access to the public schema (fenor_settings, fenor_apps)
     $dbHost   = $globalEnv['DB_HOST'] ?? '127.0.0.1';
     $dbPort   = $globalEnv['DB_PORT'] ?? '5432';
     $dbUser   = 'fenor_apps_viewer';
@@ -46,10 +46,10 @@ if (!empty($appEnv['DB_HOST'])) {
 
 $server = "$dbHost:$dbPort";
 
-// Mapeia driver para o nome que o Adminer 5.x usa
+// Map driver to the name used by Adminer 5.x
 $adminerDriver = $dbDriver === 'mysql' ? 'server' : 'pgsql';
 
-// Injeta as credenciais como se fosse um POST de login
+// Inject credentials as if it were a login POST
 $_POST['auth'] = [
     'driver'    => $adminerDriver,
     'server'    => $server,
@@ -60,7 +60,7 @@ $_POST['auth'] = [
 ];
 $_SERVER['REQUEST_METHOD'] = 'POST';
 
-// Token CSRF que o Adminer usa — injeta um dummy para não bloquear
+// CSRF token used by Adminer — inject a dummy to avoid blocking
 $_POST['token'] = '';
 
 include __DIR__ . '/adminer.php';
