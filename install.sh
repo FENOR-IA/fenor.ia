@@ -6,6 +6,7 @@
 # ═══════════════════════════════════════════════════════
 
 set -eE
+export DEBIAN_FRONTEND=noninteractive
 
 # ── LOG ───────────────────────────────────────────────
 LOG=/var/log/fenor-install.log
@@ -34,7 +35,7 @@ spinner_start() {
       i=$(( (i+1) % ${#chars} ))
       sleep 0.08
     done
-  ) &
+  ) </dev/null &
   _SPINNER_PID=$!
   disown "$_SPINNER_PID" 2>/dev/null || true
 }
@@ -69,24 +70,29 @@ run() {
 # ── WAIT APT LOCK ─────────────────────────────────────
 wait_apt() {
   local locks=("/var/lib/dpkg/lock-frontend" "/var/lib/apt/lists/lock" "/var/cache/apt/archives/lock")
-  local timeout=180 elapsed=0 waiting=false
+  local timeout=180 elapsed=0 waited=0
   while true; do
-    local locked=false
+    local locked=0
     for lock in "${locks[@]}"; do
-      fuser "$lock" >/dev/null 2>&1 && locked=true && break
+      if fuser "$lock" >/dev/null 2>&1; then locked=1; break; fi
     done
-    $locked || break
-    if ! $waiting; then
+    [ "$locked" -eq 0 ] && break
+    if [ "$waited" -eq 0 ]; then
       local holder_pid holder_name
       holder_pid=$(fuser /var/lib/dpkg/lock-frontend 2>/dev/null | awk '{print $1}')
       holder_name=$(ps -p "$holder_pid" -o comm= 2>/dev/null || echo "processo desconhecido")
       step "apt em uso por '$holder_name' (PID $holder_pid) — aguardando liberar (máx ${timeout}s)..."
-      waiting=true
+      waited=1
     fi
-    [ $elapsed -ge $timeout ] && fail "Timeout ${timeout}s aguardando apt. Tente: sudo kill $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null | awk '{print $1}')"
+    if [ "$elapsed" -ge "$timeout" ]; then
+      fail "Timeout ${timeout}s aguardando apt. Tente: sudo kill $holder_pid"
+    fi
     sleep 5; elapsed=$(( elapsed + 5 ))
   done
-  $waiting && step "apt liberado após ${elapsed}s, continuando..."
+  if [ "$waited" -eq 1 ]; then
+    step "apt liberado após ${elapsed}s, continuando..."
+  fi
+  return 0
 }
 
 # Wrapper apt com espera automática de lock
