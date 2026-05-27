@@ -66,6 +66,35 @@ run() {
   echo "[OK] $msg (${elapsed}s)" >> "$LOG"
 }
 
+# ── WAIT APT LOCK ─────────────────────────────────────
+wait_apt() {
+  local locks=("/var/lib/dpkg/lock-frontend" "/var/lib/apt/lists/lock" "/var/cache/apt/archives/lock")
+  local timeout=180 elapsed=0 waiting=false
+  while true; do
+    local locked=false
+    for lock in "${locks[@]}"; do
+      fuser "$lock" >/dev/null 2>&1 && locked=true && break
+    done
+    $locked || break
+    if ! $waiting; then
+      local holder_pid holder_name
+      holder_pid=$(fuser /var/lib/dpkg/lock-frontend 2>/dev/null | awk '{print $1}')
+      holder_name=$(ps -p "$holder_pid" -o comm= 2>/dev/null || echo "processo desconhecido")
+      step "apt em uso por '$holder_name' (PID $holder_pid) — aguardando liberar (máx ${timeout}s)..."
+      waiting=true
+    fi
+    [ $elapsed -ge $timeout ] && fail "Timeout ${timeout}s aguardando apt. Tente: sudo kill $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null | awk '{print $1}')"
+    sleep 5; elapsed=$(( elapsed + 5 ))
+  done
+  $waiting && step "apt liberado após ${elapsed}s, continuando..."
+}
+
+# Wrapper apt com espera automática de lock
+run_apt() {
+  wait_apt
+  run "$@"
+}
+
 # ── TRAP DE ERRO ──────────────────────────────────────
 _CURRENT_STEP=""
 trap_err() {
@@ -168,8 +197,8 @@ INSTALL_START=$SECONDS
 # ══════════════════════════════════════════════════════
 _CURRENT_STEP="[1/8] Sistema"
 echo "  ${BOLD}[1/8] Sistema${NC}"
-run "Atualizando lista de pacotes"  apt-get update -y
-run "Instalando dependências base"  apt-get install -y git curl wget unzip software-properties-common
+run_apt "Atualizando lista de pacotes"  apt-get update -y
+run_apt "Instalando dependências base"  apt-get install -y git curl wget unzip software-properties-common
 
 # ══════════════════════════════════════════════════════
 # [2/8] WEB SERVER + PHP
@@ -179,7 +208,7 @@ echo ""
 echo "  ${BOLD}[2/8] Web server + PHP${NC}"
 
 if [ -z "$WEB_SERVER" ]; then
-  run "Instalando Nginx" apt-get install -y nginx
+  run_apt "Instalando Nginx" apt-get install -y nginx
   WEB_SERVER="nginx"
   systemctl enable nginx >> "$LOG" 2>&1
   systemctl start nginx  >> "$LOG" 2>&1
@@ -189,16 +218,16 @@ fi
 
 if [ -z "$PHP_VERSION" ]; then
   step "Adicionando repositório PHP (ondrej/php)..."
-  run "add-apt-repository php" add-apt-repository -y ppa:ondrej/php
-  run "Atualizando pacotes após novo repositório" apt-get update -y
-  run "Instalando PHP 8.2 + extensões" \
+  run_apt "add-apt-repository php" add-apt-repository -y ppa:ondrej/php
+  run_apt "Atualizando pacotes após novo repositório" apt-get update -y
+  run_apt "Instalando PHP 8.2 + extensões" \
     apt-get install -y php8.2-fpm php8.2-pgsql php8.2-curl php8.2-mbstring php8.2-xml
   PHP_VERSION="8.2"
   PHP_FPM_SOCK="/run/php/php8.2-fpm.sock"
   systemctl enable php8.2-fpm >> "$LOG" 2>&1
   systemctl start  php8.2-fpm >> "$LOG" 2>&1
 else
-  run "Instalando extensões PHP $PHP_VERSION" \
+  run_apt "Instalando extensões PHP $PHP_VERSION" \
     apt-get install -y php${PHP_VERSION}-pgsql php${PHP_VERSION}-curl php${PHP_VERSION}-mbstring php${PHP_VERSION}-xml
   systemctl enable php${PHP_VERSION}-fpm >> "$LOG" 2>&1 || true
   systemctl start  php${PHP_VERSION}-fpm >> "$LOG" 2>&1 || true
@@ -209,7 +238,7 @@ else
 fi
 
 if ! id postgres &>/dev/null; then
-  run "Instalando PostgreSQL" apt-get install -y postgresql postgresql-contrib
+  run_apt "Instalando PostgreSQL" apt-get install -y postgresql postgresql-contrib
   systemctl enable postgresql >> "$LOG" 2>&1
   systemctl start  postgresql >> "$LOG" 2>&1
 else
@@ -234,7 +263,7 @@ if ! $HAS_NODE; then
   # nodesource setup emite avisos de qemu/hypervisor — são apenas informativos
   run "Configurando repositório Node.js v20" \
     bash -c "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"
-  run "Instalando Node.js" apt-get install -y nodejs
+  run_apt "Instalando Node.js" apt-get install -y nodejs
   ok "Node.js $(node -v) instalado"
 else
   ok "Node.js já presente: $(node -v)"
