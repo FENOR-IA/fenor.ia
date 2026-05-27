@@ -117,6 +117,27 @@ $githubUser  = trim($settings['GITHUB_USER']  ?? '');
 $githubToken = trim($settings['GITHUB_TOKEN'] ?? '');
 $githubOrg   = trim($settings['GITHUB_ORG']   ?? '');
 $isConnected = !empty($githubToken) && !empty($githubUser);
+
+$groups = [
+    [
+        'title'  => 'Geral',
+        'icon'   => 'settings-2',
+        'keys'   => ['BASE_DOMAIN', 'ADMIN_EMAIL', 'TERMINAL_URL', 'APPS_PATH'],
+        'checks' => ['BASE_DOMAIN', 'TERMINAL_URL'],
+    ],
+    [
+        'title'  => 'Cloudflare',
+        'icon'   => 'cloud',
+        'keys'   => ['CF_TOKEN', 'CF_ZONE_ID', 'CF_TUNNEL_ID'],
+        'checks' => ['CF_TOKEN', 'CF_ZONE_ID', 'CF_TUNNEL_ID'],
+    ],
+    [
+        'title'  => 'Claude',
+        'icon'   => 'bot',
+        'keys'   => ['ANTHROPIC_API_KEY'],
+        'checks' => ['ANTHROPIC_API_KEY'],
+    ],
+];
 ?>
 <!DOCTYPE html>
 <html lang="en" data-lang="pt">
@@ -162,6 +183,76 @@ $isConnected = !empty($githubToken) && !empty($githubUser);
         <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
       <?php endif; ?>
 
+      <?php foreach ($groups as $group): ?>
+      <!-- <?= strtoupper($group['title']) ?> -->
+      <div class="table-wrap" style="margin-bottom:1.25rem;">
+        <div class="table-head">
+          <h2 style="display:flex;align-items:center;gap:.45rem;">
+            <i data-lucide="<?= $group['icon'] ?>" style="width:15px;height:15px;"></i>
+            <?= $group['title'] ?>
+          </h2>
+          <?php if ($group['title'] === 'Geral'): ?>
+          <span style="font-size:.75rem;color:var(--muted);">
+            DB: <?= htmlspecialchars($config['db_driver']) ?>
+          </span>
+          <?php endif; ?>
+        </div>
+        <form method="POST">
+          <input type="hidden" name="_action" value="settings">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:170px;">Campo</th>
+                <th>Valor</th>
+                <th style="width:120px;text-align:right;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($group['keys'] as $key):
+                $meta      = $fields[$key];
+                $val       = $settings[$key] ?? '';
+                $isPass    = $meta['type'] === 'password';
+                $hasStatus = in_array($key, $group['checks']);
+                $ok        = $hasStatus ? !empty($val) : null;
+              ?>
+              <tr>
+                <td style="font-weight:500;"><?= $meta['label'] ?></td>
+                <td style="padding-top:.45rem;padding-bottom:.45rem;">
+                  <input
+                    type="<?= $meta['type'] ?>"
+                    name="<?= $key ?>"
+                    placeholder="<?= htmlspecialchars($isPass ? '(unchanged)' : $meta['placeholder']) ?>"
+                    value="<?= $isPass ? '' : htmlspecialchars($val) ?>"
+                    autocomplete="off"
+                    style="width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:6px;padding:.45rem .65rem;font-size:.8125rem;font-family:inherit;background:#fff;color:var(--ink);outline:none;">
+                  <?php if ($isPass && $val): ?>
+                    <small style="display:block;font-size:.72rem;color:var(--muted);margin-top:.2rem;"
+                           data-pt="Configurado — deixe em branco para manter"
+                           data-en="Configured — leave blank to keep">
+                      Configurado — deixe em branco para manter
+                    </small>
+                  <?php endif; ?>
+                </td>
+                <td style="text-align:right;">
+                  <?php if ($hasStatus): ?>
+                    <span class="badge <?= $ok ? 'badge-ok' : 'badge-off' ?>">
+                      <?= $ok ? 'Configurado' : 'Pendente' ?>
+                    </span>
+                  <?php endif; ?>
+                </td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+          <div style="padding:.9rem 1.25rem;border-top:1px solid var(--rule);">
+            <button type="submit" class="btn btn-primary"
+                    data-pt="Salvar <?= $group['title'] ?>"
+                    data-en="Save <?= $group['title'] ?>">Salvar <?= $group['title'] ?></button>
+          </div>
+        </form>
+      </div>
+      <?php endforeach; ?>
+
       <!-- ── GITHUB ─────────────────────────────────────────── -->
       <?php
         $authMethod  = trim($settings['GITHUB_AUTH_METHOD'] ?? '');
@@ -170,7 +261,7 @@ $isConnected = !empty($githubToken) && !empty($githubUser);
       <div class="table-wrap" style="margin-bottom:1.25rem;">
         <div class="table-head">
           <h2 style="display:flex;align-items:center;gap:.5rem;">
-            <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:var(--ink);" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:var(--ink);" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577
                 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755
                 -1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305
@@ -194,7 +285,6 @@ $isConnected = !empty($githubToken) && !empty($githubUser);
         </div>
 
         <?php if ($isConnected): ?>
-        <!-- Connected — show status + disconnect -->
         <div class="gh-section-row" style="gap:.75rem;">
           <div class="gh-connected-badge">
             <i data-lucide="check-circle-2"></i>
@@ -211,8 +301,6 @@ $isConnected = !empty($githubToken) && !empty($githubUser);
             </button>
           </form>
         </div>
-
-        <!-- Org/User field (always editable) -->
         <div style="padding:.25rem 1.25rem 1.25rem;">
           <form method="POST">
             <input type="hidden" name="_action" value="github-app">
@@ -228,7 +316,6 @@ $isConnected = !empty($githubToken) && !empty($githubUser);
         </div>
 
         <?php else: ?>
-        <!-- Not connected — PAT form -->
         <div style="padding:1.25rem;max-width:420px;">
           <form method="POST">
             <input type="hidden" name="_action" value="github-pat">
@@ -253,79 +340,6 @@ $isConnected = !empty($githubToken) && !empty($githubUser);
         </div>
         <?php endif; ?>
 
-      </div>
-
-      <!-- ── PLATFORM ───────────────────────────────────────── -->
-      <div class="table-wrap" style="margin-bottom:1.25rem;">
-        <div class="table-head">
-          <h2 data-pt="Plataforma" data-en="Platform">Plataforma</h2>
-          <span style="font-size:.75rem;color:var(--muted);">
-            DB: <?= htmlspecialchars($config['db_driver']) ?>
-          </span>
-        </div>
-        <div style="padding:1.25rem;">
-          <form method="POST">
-            <input type="hidden" name="_action" value="settings">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-              <?php foreach ($fields as $key => $meta):
-                $val    = $settings[$key] ?? '';
-                $isPass = $meta['type'] === 'password';
-              ?>
-              <div class="field">
-                <label><?= $meta['label'] ?></label>
-                <input
-                  type="<?= $meta['type'] ?>"
-                  name="<?= $key ?>"
-                  placeholder="<?= htmlspecialchars($isPass ? '(unchanged)' : $meta['placeholder']) ?>"
-                  value="<?= $isPass ? '' : htmlspecialchars($val) ?>"
-                  autocomplete="off">
-                <?php if ($isPass && $val): ?>
-                  <small data-pt="Configurado — deixe em branco para manter"
-                         data-en="Configured — leave blank to keep">Configurado — deixe em branco para manter</small>
-                <?php endif; ?>
-              </div>
-              <?php endforeach; ?>
-            </div>
-            <div style="margin-top:1rem;">
-              <button type="submit" class="btn btn-primary"
-                      data-pt="Salvar configurações" data-en="Save settings">Salvar configurações</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- ── STATUS ─────────────────────────────────────────── -->
-      <div class="table-wrap" style="margin-bottom:1.25rem;">
-        <div class="table-head"><h2>Status</h2></div>
-        <table>
-          <?php
-          $checks = [
-              'Base domain'       => !empty($settings['BASE_DOMAIN']),
-              'Cloudflare Token'  => !empty($settings['CF_TOKEN']),
-              'Cloudflare Zone'   => !empty($settings['CF_ZONE_ID']),
-              'Cloudflare Tunnel' => !empty($settings['CF_TUNNEL_ID']),
-              'Terminal URL'      => !empty($settings['TERMINAL_URL']),
-              'GitHub'            => $isConnected,
-              'GitHub Org/User'   => !empty($githubOrg),
-              'Anthropic API Key' => !empty($settings['ANTHROPIC_API_KEY']),
-          ];
-          foreach ($checks as $label => $ok): ?>
-          <tr>
-            <td style="width:200px;"><?= $label ?></td>
-            <td>
-              <?php if ($label === 'GitHub'): ?>
-                <span class="badge <?= $ok ? 'badge-ok' : 'badge-off' ?>">
-                  <?= $ok ? '@' . htmlspecialchars($githubUser) : 'Not connected' ?>
-                </span>
-              <?php else: ?>
-                <span class="badge <?= $ok ? 'badge-ok' : 'badge-off' ?>">
-                  <?= $ok ? 'Configured' : 'Pending' ?>
-                </span>
-              <?php endif; ?>
-            </td>
-          </tr>
-          <?php endforeach; ?>
-        </table>
       </div>
 
       <!-- ── CHANGE PASSWORD ────────────────────────────────── -->
