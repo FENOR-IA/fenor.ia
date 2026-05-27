@@ -5,13 +5,87 @@
 # Usage: curl -fsSL https://fenor.ia.br/install.sh | bash
 # ═══════════════════════════════════════════════════════
 
-set -e
+set -eE
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
-ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
-warn() { echo -e "  ${YELLOW}!${NC} $1"; }
-fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
+# ── LOG ───────────────────────────────────────────────
+LOG=/var/log/fenor-install.log
+mkdir -p "$(dirname "$LOG")"
+echo "" >> "$LOG"
+echo "=== Fenor Install: $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$LOG"
 
+# ── CORES ─────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+ok()   { printf "  ${GREEN}✓${NC} %s\n" "$1"; echo "[OK] $1" >> "$LOG"; }
+warn() { printf "  ${YELLOW}!${NC} %s\n" "$1"; echo "[WARN] $1" >> "$LOG"; }
+fail() { printf "\n  ${RED}✗${NC} %s\n\n" "$1"; echo "[FAIL] $1" >> "$LOG"; exit 1; }
+step() { printf "  ${CYAN}→${NC} %s\n" "$1"; echo "[STEP] $1" >> "$LOG"; }
+
+# ── SPINNER ───────────────────────────────────────────
+_SPINNER_PID=""
+spinner_start() {
+  local msg="$1"
+  local chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local i=0
+  (
+    while true; do
+      printf "\r  ${CYAN}%s${NC} %s  " "${chars:$i:1}" "$msg"
+      i=$(( (i+1) % ${#chars} ))
+      sleep 0.08
+    done
+  ) &
+  _SPINNER_PID=$!
+  disown "$_SPINNER_PID" 2>/dev/null || true
+}
+
+spinner_stop() {
+  if [ -n "$_SPINNER_PID" ]; then
+    kill "$_SPINNER_PID" 2>/dev/null || true
+    wait "$_SPINNER_PID" 2>/dev/null || true
+    _SPINNER_PID=""
+    printf "\r\033[K"  # apaga linha do spinner
+  fi
+}
+
+# Roda comando em background com spinner — loga tudo, mostra só o spinner
+run() {
+  local msg="$1"; shift
+  echo "[RUN] $msg: $*" >> "$LOG"
+  local t_start=$SECONDS
+  spinner_start "$msg"
+  local exit_code=0
+  "$@" >>"$LOG" 2>&1 || exit_code=$?
+  spinner_stop
+  local elapsed=$(( SECONDS - t_start ))
+  if [ "$exit_code" -ne 0 ]; then
+    printf "  ${RED}✗${NC} %s ${RED}(falhou após %ds — veja o log)${NC}\n" "$msg" "$elapsed"
+    return "$exit_code"
+  fi
+  printf "  ${GREEN}✓${NC} %s ${CYAN}(%ds)${NC}\n" "$msg" "$elapsed"
+  echo "[OK] $msg (${elapsed}s)" >> "$LOG"
+}
+
+# ── TRAP DE ERRO ──────────────────────────────────────
+_CURRENT_STEP=""
+trap_err() {
+  local line=$1 code=$2
+  spinner_stop
+  echo ""
+  echo -e "  ${RED}${BOLD}✗ ERRO na linha $line (código $code)${NC}"
+  [ -n "$_CURRENT_STEP" ] && echo -e "  ${YELLOW}Etapa:${NC} $_CURRENT_STEP"
+  echo ""
+  echo -e "  ${YELLOW}Últimas linhas do log:${NC}"
+  echo "  ─────────────────────────────────────────"
+  tail -30 "$LOG" | sed 's/^/  /'
+  echo "  ─────────────────────────────────────────"
+  echo ""
+  echo -e "  ${BLUE}Log completo:${NC} $LOG"
+  echo ""
+}
+trap 'trap_err $LINENO $?' ERR
+
+# ── BANNER ────────────────────────────────────────────
 echo ""
 echo "  ███████╗███████╗███╗   ██╗ ██████╗ ██████╗ "
 echo "  ██╔════╝██╔════╝████╗  ██║██╔═══██╗██╔══██╗"
@@ -20,26 +94,28 @@ echo "  ██╔══╝  ██╔══╝  ██║╚██╗██║�
 echo "  ██║     ███████╗██║ ╚████║╚██████╔╝██║  ██║"
 echo "  ╚═╝     ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝"
 echo ""
-echo "  Installing Fenor infrastructure..."
+echo "  Instalando infraestrutura Fenor..."
+printf "  Log: ${CYAN}%s${NC}\n" "$LOG"
 echo ""
 
 # ── REQUIREMENTS ─────────────────────────────────────
-[ "$(id -u)" -eq 0 ] || fail "Run as root: sudo bash install.sh"
+[ "$(id -u)" -eq 0 ] || fail "Execute como root: sudo bash install.sh"
 . /etc/os-release 2>/dev/null || true
-[[ "$ID" == "ubuntu" ]] || warn "Tested on Ubuntu. Other distros may work."
+[[ "$ID" == "ubuntu" ]] || warn "Testado no Ubuntu. Outros distros podem funcionar."
 
 if [ -f /etc/fenor/.env ]; then
   SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
-  echo "  Fenor is already installed on this VPS."
+  echo "  Fenor já está instalado nesta VPS."
   echo ""
-  echo "  Access: http://$SERVER_IP"
+  echo "  Acesso: http://$SERVER_IP"
   echo ""
-  echo "  To reinstall from scratch, remove /etc/fenor/.env and run again."
+  echo "  Para reinstalar do zero, remova /etc/fenor/.env e execute novamente."
   echo ""
   exit 0
 fi
 
-# ── AUTO-DETECT VALUES ────────────────────────────────
+# ── AUTO-DETECT ───────────────────────────────────────
+step "Detectando ambiente..."
 SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null \
   || curl -s --connect-timeout 5 https://ifconfig.me 2>/dev/null \
   || hostname -I | awk '{print $1}')
@@ -54,7 +130,6 @@ DB_DRIVER="pgsql"
 DB_STUDIO_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 20)
 DB_APPS_VIEWER_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 20)
 
-# ── ENVIRONMENT DETECTION ─────────────────────────────
 WEB_SERVER=""
 command -v nginx   &>/dev/null && WEB_SERVER="nginx"
 command -v apache2 &>/dev/null && [ -z "$WEB_SERVER" ] && WEB_SERVER="apache2"
@@ -76,85 +151,106 @@ fi
 HAS_NODE=false;   command -v node   &>/dev/null && HAS_NODE=true
 HAS_CLAUDE=false; command -v claude &>/dev/null && HAS_CLAUDE=true
 
-echo "  ┌─ Detected ───────────────────────────────┐"
-echo "  │  Server IP  : $SERVER_IP"
-[ -n "$WEB_SERVER"  ] && echo "  │  Web server : $WEB_SERVER"    || echo "  │  Web server : will install nginx"
-[ -n "$PHP_VERSION" ] && echo "  │  PHP        : $PHP_VERSION"   || echo "  │  PHP        : will install 8.2"
-$HAS_NODE           && echo "  │  Node.js    : $(node -v)"       || echo "  │  Node.js    : will install v20"
-$HAS_CLAUDE         && echo "  │  Claude     : $(claude --version 2>/dev/null | head -1)" || echo "  │  Claude     : will install"
+echo ""
+echo "  ┌─ Detectado ──────────────────────────────┐"
+printf "  │  IP do servidor: %-25s│\n" "$SERVER_IP"
+[ -n "$WEB_SERVER"  ] && printf "  │  Web server    : %-25s│\n" "$WEB_SERVER"    || printf "  │  Web server    : %-25s│\n" "instalar nginx"
+[ -n "$PHP_VERSION" ] && printf "  │  PHP           : %-25s│\n" "$PHP_VERSION"   || printf "  │  PHP           : %-25s│\n" "instalar 8.2"
+$HAS_NODE           && printf "  │  Node.js       : %-25s│\n" "$(node -v)"      || printf "  │  Node.js       : %-25s│\n" "instalar v20"
+$HAS_CLAUDE         && printf "  │  Claude Code   : %-25s│\n" "instalado"       || printf "  │  Claude Code   : %-25s│\n" "instalar"
 echo "  └──────────────────────────────────────────┘"
 echo ""
 
-# ── 1. SYSTEM ─────────────────────────────────────────
-echo "  [1/8] System..."
-DEBIAN_FRONTEND=noninteractive apt update -qq
-DEBIAN_FRONTEND=noninteractive apt install -y -qq git curl wget unzip software-properties-common
-ok "Base dependencies installed"
+INSTALL_START=$SECONDS
 
-# ── 2. WEB SERVER + PHP ───────────────────────────────
-echo "  [2/8] Web server + PHP..."
+# ══════════════════════════════════════════════════════
+# [1/8] SISTEMA
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[1/8] Sistema"
+echo "  ${BOLD}[1/8] Sistema${NC}"
+run "Atualizando lista de pacotes"  apt-get update -y
+run "Instalando dependências base"  apt-get install -y git curl wget unzip software-properties-common
+
+# ══════════════════════════════════════════════════════
+# [2/8] WEB SERVER + PHP
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[2/8] Web server + PHP"
+echo ""
+echo "  ${BOLD}[2/8] Web server + PHP${NC}"
 
 if [ -z "$WEB_SERVER" ]; then
-  DEBIAN_FRONTEND=noninteractive apt install -y -qq nginx
+  run "Instalando Nginx" apt-get install -y nginx
   WEB_SERVER="nginx"
-  systemctl enable nginx &>/dev/null
-  systemctl start nginx
-  ok "Nginx installed"
+  systemctl enable nginx >> "$LOG" 2>&1
+  systemctl start nginx  >> "$LOG" 2>&1
 else
-  ok "Existing web server: $WEB_SERVER (kept)"
+  ok "Web server existente: $WEB_SERVER (mantido)"
 fi
 
 if [ -z "$PHP_VERSION" ]; then
-  add-apt-repository -y ppa:ondrej/php &>/dev/null
-  apt update -qq
-  DEBIAN_FRONTEND=noninteractive apt install -y -qq php8.2-fpm php8.2-pgsql php8.2-curl php8.2-mbstring php8.2-xml
+  step "Adicionando repositório PHP (ondrej/php)..."
+  run "add-apt-repository php" add-apt-repository -y ppa:ondrej/php
+  run "Atualizando pacotes após novo repositório" apt-get update -y
+  run "Instalando PHP 8.2 + extensões" \
+    apt-get install -y php8.2-fpm php8.2-pgsql php8.2-curl php8.2-mbstring php8.2-xml
   PHP_VERSION="8.2"
   PHP_FPM_SOCK="/run/php/php8.2-fpm.sock"
-  systemctl enable php8.2-fpm &>/dev/null
-  systemctl start php8.2-fpm
-  ok "PHP 8.2 installed"
+  systemctl enable php8.2-fpm >> "$LOG" 2>&1
+  systemctl start  php8.2-fpm >> "$LOG" 2>&1
 else
-  DEBIAN_FRONTEND=noninteractive apt install -y -qq php${PHP_VERSION}-pgsql php${PHP_VERSION}-curl php${PHP_VERSION}-mbstring php${PHP_VERSION}-xml &>/dev/null || true
-  systemctl enable php${PHP_VERSION}-fpm &>/dev/null || true
-  systemctl start  php${PHP_VERSION}-fpm 2>/dev/null || true
+  run "Instalando extensões PHP $PHP_VERSION" \
+    apt-get install -y php${PHP_VERSION}-pgsql php${PHP_VERSION}-curl php${PHP_VERSION}-mbstring php${PHP_VERSION}-xml
+  systemctl enable php${PHP_VERSION}-fpm >> "$LOG" 2>&1 || true
+  systemctl start  php${PHP_VERSION}-fpm >> "$LOG" 2>&1 || true
   for sock in "/run/php/php${PHP_VERSION}-fpm.sock" "/var/run/php/php${PHP_VERSION}-fpm.sock"; do
     [ -S "$sock" ] && PHP_FPM_SOCK="$sock" && break
   done
-  ok "PHP $PHP_VERSION found — socket: $PHP_FPM_SOCK"
+  ok "PHP $PHP_VERSION — socket: $PHP_FPM_SOCK"
 fi
 
-# PostgreSQL
 if ! id postgres &>/dev/null; then
-  DEBIAN_FRONTEND=noninteractive apt install -y -qq postgresql postgresql-contrib
-  systemctl enable postgresql &>/dev/null
-  systemctl start postgresql
-  ok "PostgreSQL installed"
+  run "Instalando PostgreSQL" apt-get install -y postgresql postgresql-contrib
+  systemctl enable postgresql >> "$LOG" 2>&1
+  systemctl start  postgresql >> "$LOG" 2>&1
 else
-  systemctl enable postgresql &>/dev/null
-  systemctl start postgresql 2>/dev/null || true
-  ok "PostgreSQL found (kept)"
+  systemctl enable postgresql >> "$LOG" 2>&1 || true
+  systemctl start  postgresql >> "$LOG" 2>&1 || true
+  ok "PostgreSQL encontrado (mantido)"
 fi
 
-# ── GENERATE PASSWORD HASH (PHP is now available) ─────
+# Hash de senha (PHP já disponível)
 ADMIN_HASH=$(php -r "echo password_hash('$ADMIN_PASS', PASSWORD_BCRYPT);" 2>/dev/null || echo "")
-[ -z "$ADMIN_HASH" ] && fail "Could not generate password hash."
+[ -z "$ADMIN_HASH" ] && fail "Não foi possível gerar hash de senha."
 
-# ── 3. NODE.JS + CLAUDE CODE ──────────────────────────
-echo "  [3/8] Node.js + Claude Code..."
+# ══════════════════════════════════════════════════════
+# [3/8] NODE.JS + CLAUDE CODE
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[3/8] Node.js + Claude Code"
+echo ""
+echo "  ${BOLD}[3/8] Node.js + Claude Code${NC}"
+
 if ! $HAS_NODE; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &>/dev/null
-  DEBIAN_FRONTEND=noninteractive apt install -y -qq nodejs
-  ok "Node.js $(node -v) installed"
+  step "Configurando repositório NodeSource v20..."
+  # nodesource setup emite avisos de qemu/hypervisor — são apenas informativos
+  run "Configurando repositório Node.js v20" \
+    bash -c "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"
+  run "Instalando Node.js" apt-get install -y nodejs
+  ok "Node.js $(node -v) instalado"
 else
-  ok "Node.js found: $(node -v)"
+  ok "Node.js já presente: $(node -v)"
 fi
+
 if ! $HAS_CLAUDE; then
-  npm install -g @anthropic-ai/claude-code &>/dev/null
-  ok "Claude Code installed"
+  step "Instalando Claude Code via npm (pode levar 2-3 minutos)..."
+  run "npm install -g @anthropic-ai/claude-code" \
+    npm install -g @anthropic-ai/claude-code
+  ok "Claude Code instalado: $(claude --version 2>/dev/null | head -1)"
 else
-  ok "Claude Code found"
+  ok "Claude Code já presente: $(claude --version 2>/dev/null | head -1)"
 fi
-CLAUDE_BIN=$(which claude 2>/dev/null)
+
+# Garante symlink do binário claude
+CLAUDE_BIN=$(which claude 2>/dev/null || true)
 if [ -n "$CLAUDE_BIN" ]; then
   CLAUDE_REAL=$(readlink -f "$CLAUDE_BIN" 2>/dev/null || echo "$CLAUDE_BIN")
   if [ "$CLAUDE_REAL" != "/usr/local/bin/claude" ] && [ ! -f "/opt/claude" ]; then
@@ -165,21 +261,28 @@ if [ -n "$CLAUDE_BIN" ]; then
   chmod 755 "$CLAUDE_BIN" 2>/dev/null || true
 fi
 
-# ── 4. TTYD ───────────────────────────────────────────
-echo "  [4/8] Web terminal (ttyd)..."
+# ══════════════════════════════════════════════════════
+# [4/8] TTYD
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[4/8] Terminal web (ttyd)"
+echo ""
+echo "  ${BOLD}[4/8] Terminal web (ttyd)${NC}"
+
 if ! command -v ttyd &>/dev/null; then
   ARCH=$(uname -m)
   [ "$ARCH" = "x86_64" ] && TTYD_BIN="ttyd.x86_64" || TTYD_BIN="ttyd.aarch64"
-  wget -q "https://github.com/tsl0922/ttyd/releases/download/1.7.7/$TTYD_BIN" -O /usr/local/bin/ttyd
+  step "Baixando ttyd ($ARCH)..."
+  run "Download ttyd 1.7.7" \
+    wget -q "https://github.com/tsl0922/ttyd/releases/download/1.7.7/$TTYD_BIN" -O /usr/local/bin/ttyd
   chmod +x /usr/local/bin/ttyd
-  ok "ttyd installed"
 else
-  ok "ttyd found"
+  ok "ttyd já presente"
 fi
 
 id fenor &>/dev/null || useradd -m -s /bin/bash fenor
 
 if ! systemctl is-active ttyd &>/dev/null; then
+  step "Criando serviço systemd ttyd..."
   cat > /etc/systemd/system/ttyd.service << EOF
 [Unit]
 Description=ttyd web terminal - Fenor
@@ -194,18 +297,25 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl daemon-reload
-  systemctl enable ttyd &>/dev/null
-  systemctl start ttyd
+  systemctl daemon-reload >> "$LOG" 2>&1
+  systemctl enable ttyd   >> "$LOG" 2>&1
+  systemctl start  ttyd   >> "$LOG" 2>&1
 fi
-ok "ttyd active (127.0.0.1:7681)"
+ok "ttyd ativo em 127.0.0.1:7681"
 
-# ── 5. DATABASE ───────────────────────────────────────
-echo "  [5/8] Database..."
-su - postgres -c "psql -c \"CREATE DATABASE fenor;\"" &>/dev/null || true
-su - postgres -c "psql -c \"CREATE USER fenor_studio WITH PASSWORD '$DB_STUDIO_PASS';\"" &>/dev/null || true
-su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE fenor TO fenor_studio;\"" &>/dev/null || true
-su - postgres -c "psql -d fenor" <<SQL
+# ══════════════════════════════════════════════════════
+# [5/8] BANCO DE DADOS
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[5/8] Banco de dados (PostgreSQL)"
+echo ""
+echo "  ${BOLD}[5/8] Banco de dados${NC}"
+step "Criando database, usuário e tabelas..."
+
+su - postgres -c "psql -c \"CREATE DATABASE fenor;\"" >> "$LOG" 2>&1 || true
+su - postgres -c "psql -c \"CREATE USER fenor_studio WITH PASSWORD '$DB_STUDIO_PASS';\"" >> "$LOG" 2>&1 || true
+su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE fenor TO fenor_studio;\"" >> "$LOG" 2>&1 || true
+
+su - postgres -c "psql -d fenor" >> "$LOG" 2>&1 <<SQL
 CREATE TABLE IF NOT EXISTS fenor_settings (
     key        VARCHAR(100) NOT NULL,
     value      TEXT         NOT NULL DEFAULT '',
@@ -243,20 +353,29 @@ END \$\$;
 REVOKE ALL ON SCHEMA public FROM fenor_apps_viewer;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM fenor_apps_viewer;
 SQL
-ok "PostgreSQL: database fenor + tables created"
+ok "Database fenor + tabelas criadas"
 
-# ── 6. DIRECTORIES ────────────────────────────────────
-echo "  [6/8] Directories..."
+# ══════════════════════════════════════════════════════
+# [6/8] DIRETÓRIOS
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[6/8] Diretórios"
+echo ""
+echo "  ${BOLD}[6/8] Diretórios${NC}"
 mkdir -p /var/www/{dev,hml,prd,studio}
 chown -R fenor:www-data /var/www/
 chmod -R 775 /var/www/
 mkdir -p /etc/fenor/keys
 chown root:www-data /etc/fenor/keys
 chmod 750 /etc/fenor/keys
-ok "Directories created"
+ok "Diretórios criados"
 
-# ── 7. NGINX ──────────────────────────────────────────
-echo "  [7/8] Nginx..."
+# ══════════════════════════════════════════════════════
+# [7/8] NGINX
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[7/8] Nginx"
+echo ""
+echo "  ${BOLD}[7/8] Nginx${NC}"
+step "Configurando virtual hosts..."
 rm -f /etc/nginx/sites-enabled/default
 
 cat > /etc/nginx/sites-available/fenor.conf << NGINX
@@ -343,11 +462,15 @@ NGINX
 ln -sf /etc/nginx/sites-available/fenor.conf /etc/nginx/sites-enabled/
 rm -f /etc/nginx/conf.d/terminal-admin.conf
 
-nginx -t && systemctl reload nginx
-ok "Nginx configured"
+nginx -t >> "$LOG" 2>&1 && systemctl reload nginx >> "$LOG" 2>&1
+ok "Nginx configurado"
 
-# ── 8. GLOBAL CONFIG ──────────────────────────────────
-echo "  [8/8] Global configuration..."
+# ══════════════════════════════════════════════════════
+# [8/8] CONFIGURAÇÃO GLOBAL
+# ══════════════════════════════════════════════════════
+_CURRENT_STEP="[8/8] Configuração global"
+echo ""
+echo "  ${BOLD}[8/8] Configuração global${NC}"
 mkdir -p /etc/fenor
 
 cat > /etc/fenor/.env << ENV
@@ -369,36 +492,38 @@ DB_APPS_VIEWER_PASS=$DB_APPS_VIEWER_PASS
 ENV
 chmod 640 /etc/fenor/.env
 chown root:www-data /etc/fenor/.env
-ok "Config saved to /etc/fenor/.env"
+ok "Config salva em /etc/fenor/.env"
 
-# ── SCRIPTS ───────────────────────────────────────────
+step "Baixando scripts CLI..."
 REPO_RAW="https://raw.githubusercontent.com/FENOR-IA/fenor.ia/main"
-curl -fsSL "$REPO_RAW/bin/fenor"          -o /usr/local/bin/fenor
-curl -fsSL "$REPO_RAW/bin/newapp"         -o /usr/local/bin/newapp
-curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin/fenor-promote
-curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
-curl -fsSL "$REPO_RAW/bin/save-memory"    -o /usr/local/bin/save-memory
+run "Download: fenor"         curl -fsSL "$REPO_RAW/bin/fenor"         -o /usr/local/bin/fenor
+run "Download: newapp"        curl -fsSL "$REPO_RAW/bin/newapp"        -o /usr/local/bin/newapp
+run "Download: fenor-promote" curl -fsSL "$REPO_RAW/bin/fenor-promote" -o /usr/local/bin/fenor-promote
+run "Download: fenor-git"     curl -fsSL "$REPO_RAW/bin/fenor-git"     -o /usr/local/bin/fenor-git
+run "Download: save-memory"   curl -fsSL "$REPO_RAW/bin/save-memory"   -o /usr/local/bin/save-memory
 chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote /usr/local/bin/fenor-git /usr/local/bin/save-memory
-ok "Scripts installed"
+ok "Scripts instalados"
 
-# ── BOILERPLATE (language templates) ─────────────────
-rm -rf /tmp/fenor-repo /etc/fenor/boilerplate
-git clone --depth=1 --filter=blob:none --sparse \
-  "https://github.com/FENOR-IA/fenor.ia.git" /tmp/fenor-repo 2>/dev/null \
-  && cd /tmp/fenor-repo \
-  && git sparse-checkout set boilerplate \
-  && mkdir -p /etc/fenor/boilerplate \
-  && cp -r boilerplate/pt /etc/fenor/boilerplate/pt \
-  && cp -r boilerplate/en /etc/fenor/boilerplate/en \
-  && cd / && rm -rf /tmp/fenor-repo
-ok "Templates installed: /etc/fenor/boilerplate/{pt,en}"
+step "Clonando boilerplate..."
+run "Clone boilerplate (sparse)" \
+  bash -c "rm -rf /tmp/fenor-repo /etc/fenor/boilerplate \
+    && git clone --depth=1 --filter=blob:none --sparse \
+       'https://github.com/FENOR-IA/fenor.ia.git' /tmp/fenor-repo \
+    && cd /tmp/fenor-repo \
+    && git sparse-checkout set boilerplate \
+    && mkdir -p /etc/fenor/boilerplate \
+    && cp -r boilerplate/pt /etc/fenor/boilerplate/pt \
+    && cp -r boilerplate/en /etc/fenor/boilerplate/en \
+    && cd / && rm -rf /tmp/fenor-repo"
+ok "Templates: /etc/fenor/boilerplate/{pt,en}"
 
-# ── GIT IDENTITY ──────────────────────────────────────
+step "Configurando git global..."
 git config --global user.email "fenor@fenor.ia"
 git config --global user.name "Fenor"
 git config --global init.defaultBranch dev
+ok "Git configurado"
 
-# ── SUDOERS ───────────────────────────────────────────
+step "Configurando sudoers..."
 cat > /etc/sudoers.d/fenor-scripts << 'SUDOERS'
 www-data ALL=(root) NOPASSWD: /usr/local/bin/newapp
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor-promote
@@ -408,41 +533,48 @@ www-data ALL=(root) NOPASSWD: /bin/systemctl restart ttyd-*
 www-data ALL=(root) NOPASSWD: /usr/bin/tee /etc/fenor/ttyd.env
 SUDOERS
 chmod 440 /etc/sudoers.d/fenor-scripts
-ok "Sudoers configured"
+ok "Sudoers configurado"
 
-# ── STUDIO ────────────────────────────────────────────
-curl -fsSL "$REPO_RAW/studio/install-studio.sh" | bash &>/dev/null
-curl -fsSL "https://www.adminer.org/latest.php" -o /var/www/studio/adminer.php &>/dev/null || true
-ok "Studio installed"
+step "Instalando Studio..."
+run "install-studio.sh" bash -c "curl -fsSL '$REPO_RAW/studio/install-studio.sh' | bash"
+run "Adminer" bash -c "curl -fsSL 'https://www.adminer.org/latest.php' -o /var/www/studio/adminer.php" || warn "Adminer não instalado (opcional)"
+ok "Studio instalado"
 
-# ── CLOUDFLARED ───────────────────────────────────────
+step "Instalando cloudflared..."
 if ! command -v cloudflared &>/dev/null; then
-  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    -o /usr/local/bin/cloudflared
+  run "Download cloudflared" \
+    curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+      -o /usr/local/bin/cloudflared
   chmod +x /usr/local/bin/cloudflared
 fi
-ok "cloudflared installed"
+ok "cloudflared instalado"
 
-# ── SUMMARY ───────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+# RESUMO
+# ══════════════════════════════════════════════════════
+TOTAL=$(( SECONDS - INSTALL_START ))
 echo ""
 echo "  ╔══════════════════════════════════════════╗"
-echo "  ║         Fenor installed successfully!    ║"
+echo "  ║     Fenor instalado com sucesso! 🎉      ║"
 echo "  ╠══════════════════════════════════════════╣"
 echo "  ║                                          ║"
-printf "  ║  Access:   http://%-24s║\n" "$SERVER_IP"
+printf "  ║  Acesso:   http://%-24s║\n" "$SERVER_IP"
 printf "  ║  Terminal: http://%s/terminal/\n" "$SERVER_IP"
 echo "  ║                                          ║"
 echo "  ║  Login:    admin@fenor.local             ║"
-printf "  ║  Password: %-32s║\n" "$ADMIN_PASS"
+printf "  ║  Senha:    %-32s║\n" "$ADMIN_PASS"
 echo "  ║                                          ║"
-echo "  ║  Change your password in Studio          ║"
-echo "  ║  Settings after the first login.         ║"
+echo "  ║  Troque a senha em Studio → Settings     ║"
+echo "  ║  após o primeiro login.                  ║"
 echo "  ║                                          ║"
 echo "  ╠══════════════════════════════════════════╣"
-echo "  ║  GitHub integration (optional):          ║"
+echo "  ║  GitHub (opcional):                      ║"
 echo "  ║  Studio → Settings → GitHub              ║"
-echo "  ║  Paste a Personal Access Token           ║"
-echo "  ║  (scopes: repo, read:org)                ║"
+echo "  ║  Cole um Personal Access Token           ║"
+echo "  ║  (escopos: repo, read:org)               ║"
 echo "  ║                                          ║"
+printf "  ╠══════════════════════════════════════════╣\n"
+printf "  ║  Tempo total: %-28s║\n" "${TOTAL}s"
+printf "  ║  Log completo: %-27s║\n" "$LOG"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
