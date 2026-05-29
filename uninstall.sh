@@ -48,7 +48,7 @@ echo ""
 
 # ── CONFIRMAÇÃO ───────────────────────────────────────
 printf "  Digite ${BOLD}REMOVER${NC} para confirmar: "
-read -r CONFIRM
+read -r CONFIRM </dev/tty
 if [ "$CONFIRM" != "REMOVER" ]; then
   echo ""
   echo "  Cancelado."
@@ -80,10 +80,21 @@ fi
 # ── [3/6] TTYD ────────────────────────────────────────
 echo ""
 echo "  ${BOLD}[3/6] Terminal (ttyd)${NC}"
-step "Parando e removendo serviço ttyd..."
+step "Parando e removendo serviço ttyd principal..."
 systemctl stop ttyd    >>"$LOG" 2>&1 || true
 systemctl disable ttyd >>"$LOG" 2>&1 || true
 rm -f /etc/systemd/system/ttyd.service
+
+step "Removendo serviços ttyd-* dos apps..."
+for svc in /etc/systemd/system/ttyd-*.service; do
+  [ -f "$svc" ] || continue
+  name=$(basename "$svc" .service)
+  systemctl stop    "$name" >>"$LOG" 2>&1 || true
+  systemctl disable "$name" >>"$LOG" 2>&1 || true
+  rm -f "$svc"
+  ok "Serviço $name removido"
+done
+
 systemctl daemon-reload >>"$LOG" 2>&1 || true
 rm -f /usr/local/bin/ttyd
 ok "ttyd removido"
