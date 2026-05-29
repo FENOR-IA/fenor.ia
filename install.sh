@@ -371,8 +371,9 @@ CREATE TABLE IF NOT EXISTS fenor_apps (
     description  TEXT         NOT NULL DEFAULT '',
     github_repo  VARCHAR(255) NOT NULL DEFAULT '',
     memory_notes TEXT         NOT NULL DEFAULT '',
+    language     VARCHAR(5)   NOT NULL DEFAULT 'pt',
     status       VARCHAR(20)  NOT NULL DEFAULT 'registered',
-    config       TEXT,
+    config       JSONB,
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 GRANT ALL ON TABLE fenor_settings TO fenor_studio;
