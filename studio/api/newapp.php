@@ -16,8 +16,11 @@ $data        = json_decode(file_get_contents('php://input'), true);
 $name        = preg_replace('/[^a-z0-9\-]/', '', strtolower(trim($data['name'] ?? '')));
 $description = trim($data['description']  ?? '');
 $github_repo = trim($data['github_repo']  ?? '');
-$language    = in_array($data['language'] ?? '', ['pt', 'en']) ? $data['language'] : 'pt';
-$config_json = isset($data['config']) ? json_encode($data['config']) : null;
+$template    = preg_replace('/[^a-z0-9\-]/', '', strtolower(trim($data['template'] ?? 'base')));
+$config      = $data['config'] ?? [];
+$config['template'] = $template;
+$config_json = json_encode($config);
+$language    = 'pt';
 
 if (!$name) {
     echo json_encode(['success' => false, 'error' => 'Invalid name']);

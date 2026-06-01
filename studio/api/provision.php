@@ -22,17 +22,18 @@ if (!$name) {
 
 // Fetch app metadata from database
 try {
-    $stmt = fenorDB()->prepare('SELECT description, language FROM fenor_apps WHERE name = ?');
+    $stmt = fenorDB()->prepare('SELECT description, config FROM fenor_apps WHERE name = ?');
     $stmt->execute([$name]);
-    $row = $stmt->fetch();
+    $row         = $stmt->fetch();
     $description = $row ? $row['description'] : '';
-    $language    = ($row && in_array($row['language'], ['pt', 'en'])) ? $row['language'] : 'pt';
+    $config      = json_decode($row['config'] ?? '{}', true);
+    $template    = preg_replace('/[^a-z0-9\-]/', '', $config['template'] ?? 'base');
 } catch (Throwable $e) {
     $description = '';
-    $language    = 'pt';
+    $template    = 'base';
 }
 
-$cmd    = 'sudo /usr/local/bin/newapp ' . escapeshellarg($name) . ' ' . escapeshellarg($description) . ' ' . escapeshellarg($language) . ' 2>&1';
+$cmd    = 'sudo /usr/local/bin/newapp ' . escapeshellarg($name) . ' ' . escapeshellarg($description) . ' ' . escapeshellarg($template) . ' 2>&1';
 $output = shell_exec($cmd);
 
 $success = strpos($output ?? '', 'App ready!') !== false || strpos($output ?? '', 'URL:') !== false;

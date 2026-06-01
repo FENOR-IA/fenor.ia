@@ -78,21 +78,65 @@ MD
     echo "  ✓ Memory saved and versioned."
     ;;
 
+  templates)
+    SUBCMD=$1; shift
+    TEMPLATES_DIR="/etc/fenor/templates"
+    case "$SUBCMD" in
+      update)
+        if [ ! -d "$TEMPLATES_DIR/.git" ]; then
+          echo "  Clonando repositório de templates..."
+          git clone --depth=1 https://github.com/FENOR-IA/fenor-ia-template.git "$TEMPLATES_DIR"
+        else
+          echo "  Atualizando templates..."
+          git -C "$TEMPLATES_DIR" pull --ff-only
+        fi
+        echo "  ✓ Templates atualizados em $TEMPLATES_DIR"
+        ;;
+      list)
+        if [ ! -f "$TEMPLATES_DIR/index.json" ]; then
+          echo "  Templates não encontrados. Execute: fenor templates update"
+          exit 1
+        fi
+        echo ""
+        echo "  Templates disponíveis:"
+        echo "  ─────────────────────────────────────────────"
+        python3 -c "
+import json, sys
+with open('$TEMPLATES_DIR/index.json') as f:
+    for t in json.load(f):
+        print(f\"  {t['name']:<12} {t.get('label',''):<20} {t.get('description','')}\")
+" 2>/dev/null || \
+        awk 'BEGIN{RS="{"; FS="\""}
+          /\"name\"/ { name=$4 }
+          /\"label\"/ { label=$4 }
+          /\"description\"/ { print "  " name "\t" label }
+        ' "$TEMPLATES_DIR/index.json"
+        echo ""
+        ;;
+      *)
+        echo "  Usage: fenor templates <update|list>"
+        ;;
+    esac
+    ;;
+
   help|--help|-h|"")
     echo ""
     echo "  Fenor — Infrastructure CLI"
     echo ""
     echo "  Commands:"
-    echo "    fenor new <app>          Create new app in DEV"
-    echo "    fenor promote <app>      Promote DEV→HML or HML→PRD"
-    echo "    fenor status             List all apps and URLs"
-    echo "    fenor logs <app> [env]   Tail app logs"
-    echo "    fenor memory <app> [env] Save session log"
+    echo "    fenor new <app>              Create new app in DEV"
+    echo "    fenor promote <app>          Promote DEV→HML or HML→PRD"
+    echo "    fenor status                 List all apps and URLs"
+    echo "    fenor logs <app> [env]       Tail app logs"
+    echo "    fenor memory <app> [env]     Save session log"
+    echo "    fenor templates list         List available templates"
+    echo "    fenor templates update       Update templates from GitHub"
     echo ""
     echo "  Examples:"
     echo "    fenor new my-crm"
     echo "    fenor promote my-crm"
     echo "    fenor status"
+    echo "    fenor templates list"
     echo ""
     ;;
 

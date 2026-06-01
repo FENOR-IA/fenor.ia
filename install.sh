@@ -540,18 +540,12 @@ run "Download: save-memory"   curl -fsSL "$REPO_RAW/bin/save-memory"   -o /usr/l
 chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote /usr/local/bin/fenor-git /usr/local/bin/save-memory
 ok "Scripts instalados"
 
-step "Clonando boilerplate..."
-run "Clone boilerplate (sparse)" \
-  bash -c "rm -rf /tmp/fenor-repo /etc/fenor/boilerplate \
-    && git clone --depth=1 --filter=blob:none --sparse \
-       'https://github.com/FENOR-IA/fenor.ia.git' /tmp/fenor-repo \
-    && cd /tmp/fenor-repo \
-    && git sparse-checkout set boilerplate \
-    && mkdir -p /etc/fenor/boilerplate \
-    && cp -r boilerplate/pt /etc/fenor/boilerplate/pt \
-    && cp -r boilerplate/en /etc/fenor/boilerplate/en \
-    && cd / && rm -rf /tmp/fenor-repo"
-ok "Templates: /etc/fenor/boilerplate/{pt,en}"
+step "Clonando templates..."
+run "Clone fenor-ia-template" \
+  bash -c "rm -rf /etc/fenor/templates \
+    && git clone --depth=1 \
+       'https://github.com/FENOR-IA/fenor-ia-template.git' /etc/fenor/templates"
+ok "Templates: /etc/fenor/templates/"
 
 step "Configurando git global..."
 git config --global user.email "fenor@fenor.ia"

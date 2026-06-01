@@ -50,6 +50,12 @@ require_once __DIR__ . '/config/db.php';
 $_ghSettings      = fenorSettings();
 $_hasGithubToken  = !empty(trim($_ghSettings['GITHUB_TOKEN'] ?? ''));
 $_ghOwner         = trim($_ghSettings['GITHUB_ORG'] ?? '') ?: trim($_ghSettings['GITHUB_USER'] ?? '');
+
+// Templates disponíveis
+$_templatesIndex = '/etc/fenor/templates/index.json';
+$_templates = file_exists($_templatesIndex)
+    ? (json_decode(file_get_contents($_templatesIndex), true) ?: [])
+    : [['name'=>'base','label'=>'Base','description'=>'Login e dashboard.'],['name'=>'crm','label'=>'CRM','description'=>'Clientes e financeiro.']];
 ?>
 <!DOCTYPE html>
 <html lang="en" data-lang="pt">
@@ -63,7 +69,23 @@ $_ghOwner         = trim($_ghSettings['GITHUB_ORG'] ?? '') ?: trim($_ghSettings[
   <link rel="stylesheet" href="assets/css/studio.css">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
-    /* Wizard — progress indicator */
+    /* Template cards */
+    .tpl-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.6rem; margin-top:.5rem; }
+    .tpl-card {
+      display:flex; flex-direction:column; gap:.3rem;
+      padding:.875rem; border:2px solid var(--rule); border-radius:10px;
+      cursor:pointer; background:#fff; transition:all .15s; user-select:none;
+    }
+    .tpl-card input { display:none; }
+    .tpl-card strong { font-size:.875rem; color:var(--ink); display:flex; align-items:center; gap:.4rem; }
+    .tpl-card strong svg { width:15px; height:15px; stroke:var(--muted); flex-shrink:0; transition:stroke .15s; }
+    .tpl-card small { font-size:.75rem; color:var(--muted); line-height:1.5; }
+    .tpl-card:hover { border-color:var(--ember); }
+    .tpl-card:hover strong svg { stroke:var(--ember); }
+    .tpl-card.sel { border-color:var(--warm); background:#fff8f5; }
+    .tpl-card.sel strong svg { stroke:var(--warm); }
+
+    /* Wizard progress */
     .wiz-progress { display:flex; align-items:center; gap:0; margin-bottom:1.5rem; }
     .wiz-step { display:flex; align-items:center; gap:.5rem; font-size:.8rem; color:var(--muted); }
     .wiz-step .wiz-num {
@@ -77,85 +99,6 @@ $_ghOwner         = trim($_ghSettings['GITHUB_ORG'] ?? '') ?: trim($_ghSettings[
     .wiz-step.active .wiz-label { color:var(--ink); font-weight:500; }
     .wiz-connector { flex:1; height:2px; background:var(--rule); margin:0 .5rem; transition:background .2s; }
     .wiz-connector.done { background:var(--warm); }
-
-    /* Wizard — module cards */
-    .mod-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem; margin-top:.4rem; }
-    .mod-card {
-      display:flex; flex-direction:column; align-items:center; gap:.35rem;
-      padding:.7rem .4rem; border:2px solid var(--rule); border-radius:10px;
-      cursor:pointer; font-size:.75rem; font-weight:500; text-align:center;
-      color:var(--muted); background:#fff; transition:all .15s; user-select:none; position:relative;
-    }
-    .mod-card input { display:none; }
-    .mod-card svg   { width:20px; height:20px; stroke:var(--muted); transition:stroke .15s; }
-    .mod-card:hover { border-color:var(--ember); color:var(--ink); }
-    .mod-card:hover svg { stroke:var(--ember); }
-    .mod-card.sel   { border-color:var(--warm); background:#fff1ec; color:var(--warm); }
-    .mod-card.sel svg { stroke:var(--warm); }
-    /* Disabled state (EN template — module not available yet) */
-    .mod-card--disabled {
-      opacity:.45; cursor:not-allowed; pointer-events:none;
-      border-color:var(--rule) !important; background:#fafaf9 !important; color:var(--muted) !important;
-    }
-    .mod-card--disabled svg { stroke:var(--rule) !important; }
-    .mod-card .soon-badge {
-      display:none; position:absolute; top:3px; right:3px;
-      font-size:.55rem; font-weight:700; background:var(--rule); color:var(--muted);
-      padding:.1rem .3rem; border-radius:4px; letter-spacing:.04em;
-    }
-    .mod-card--disabled .soon-badge { display:block; }
-
-    /* Wizard — option cards (radio) */
-    .opt-grid { display:flex; flex-direction:column; gap:.4rem; margin-top:.4rem; }
-    .opt-card {
-      display:flex; align-items:center; gap:.875rem;
-      padding:.65rem .875rem; border:2px solid var(--rule); border-radius:9px;
-      cursor:pointer; background:#fff; transition:all .15s; user-select:none;
-    }
-    .opt-card input { display:none; }
-    .opt-card .opt-icon { flex-shrink:0; width:32px; height:32px; border-radius:7px;
-      background:var(--cream); display:flex; align-items:center; justify-content:center; transition:background .15s; }
-    .opt-card .opt-icon svg { width:16px; height:16px; stroke:var(--muted); transition:stroke .15s; }
-    .opt-card strong { display:block; font-size:.8125rem; color:var(--ink); line-height:1.3; }
-    .opt-card small  { display:block; font-size:.73rem; color:var(--muted); line-height:1.3; margin-top:.1rem; }
-    .opt-card:hover { border-color:var(--ember); }
-    .opt-card:hover .opt-icon { background:#fde8df; }
-    .opt-card:hover .opt-icon svg { stroke:var(--ember); }
-    .opt-card.sel { border-color:var(--warm); background:#fff8f5; }
-    .opt-card.sel .opt-icon { background:#fde8df; }
-    .opt-card.sel .opt-icon svg { stroke:var(--warm); }
-
-    /* Language selector cards */
-    .lang-opt-grid { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:.4rem; }
-    .lang-opt-card {
-      display:flex; align-items:center; gap:.75rem;
-      padding:.75rem; border:2px solid var(--rule); border-radius:9px;
-      cursor:pointer; background:#fff; transition:all .15s; user-select:none;
-    }
-    .lang-opt-card input { display:none; }
-    .lang-opt-card .lang-flag { font-size:1.4rem; flex-shrink:0; }
-    .lang-opt-card strong { display:block; font-size:.8125rem; color:var(--ink); }
-    .lang-opt-card small  { display:block; font-size:.72rem; color:var(--muted); margin-top:.1rem; line-height:1.4; }
-    .lang-opt-card:hover { border-color:var(--ember); }
-    .lang-opt-card.sel   { border-color:var(--warm); background:#fff8f5; }
-
-    /* Wizard inline toggle */
-    .toggle-row { display:flex; gap:.5rem; margin-top:.4rem; }
-    .toggle-opt {
-      flex:1; display:flex; align-items:center; justify-content:center; gap:.4rem;
-      padding:.55rem; border:2px solid var(--rule); border-radius:8px;
-      cursor:pointer; font-size:.8125rem; font-weight:500; color:var(--muted);
-      background:#fff; transition:all .15s; user-select:none;
-    }
-    .toggle-opt input { display:none; }
-    .toggle-opt:hover { border-color:var(--ember); color:var(--ink); }
-    .toggle-opt.sel   { border-color:var(--warm); background:#fff8f5; color:var(--warm); }
-
-    .wiz-section-label {
-      font-size:.7rem; font-weight:600; text-transform:uppercase;
-      letter-spacing:.07em; color:var(--muted); margin-bottom:.1rem;
-    }
-    #form-wizard .field { margin-bottom:1.1rem; }
 
     /* Creation progress */
     @keyframes spin    { to { transform: rotate(360deg); } }
@@ -182,12 +125,6 @@ $_ghOwner         = trim($_ghSettings['GITHUB_ORG'] ?? '') ?: trim($_ghSettings[
     .prog-success strong { display:block; font-size:.95rem; margin-bottom:.3rem; }
     .prog-success .prog-url { font-size:.8rem; color:var(--warm); text-decoration:none; display:inline-flex; align-items:center; gap:.3rem; }
     .prog-success .prog-url:hover { text-decoration:underline; }
-    .wizard-check, .wizard-radio {
-      display:flex; align-items:center; gap:.4rem; font-size:.875rem; cursor:pointer;
-      padding:.25rem .4rem; border-radius:5px; transition:background .12s;
-    }
-    .wizard-check:hover, .wizard-radio:hover { background:var(--cream); }
-    .wizard-check input, .wizard-radio input { margin:0; cursor:pointer; }
   </style>
 </head>
 <body>
@@ -360,277 +297,72 @@ $_ghOwner         = trim($_ghSettings['GITHUB_ORG'] ?? '') ?: trim($_ghSettings[
       <h2 id="modal-title" style="margin:0;" data-pt="Novo app" data-en="New app">Novo app</h2>
     </div>
 
-    <!-- Wizard progress indicator -->
+    <!-- Wizard progress -->
     <div id="wiz-progress" style="display:none;" class="wiz-progress">
       <div class="wiz-step active" id="wp-s1">
         <span class="wiz-num">1</span>
-        <span class="wiz-label" data-pt="Idioma" data-en="Language">Idioma</span>
+        <span class="wiz-label">Template</span>
       </div>
       <div class="wiz-connector" id="wp-line1"></div>
       <div class="wiz-step" id="wp-s2">
         <span class="wiz-num">2</span>
-        <span class="wiz-label" data-pt="Nome" data-en="Name">Nome</span>
-      </div>
-      <div class="wiz-connector" id="wp-line2"></div>
-      <div class="wiz-step" id="wp-s3">
-        <span class="wiz-num">3</span>
-        <span class="wiz-label" data-pt="Módulos" data-en="Modules">Módulos</span>
-      </div>
-      <div class="wiz-connector" id="wp-line3"></div>
-      <div class="wiz-step" id="wp-s4">
-        <span class="wiz-num">4</span>
-        <span class="wiz-label" data-pt="Contexto" data-en="Context">Contexto</span>
+        <span class="wiz-label">Nome</span>
       </div>
     </div>
 
-    <!-- STEP 1: Language -->
-    <div id="form-lang">
-      <div class="field">
-        <div class="wiz-section-label" data-pt="Idioma do app" data-en="App language">Idioma do app</div>
-        <p style="font-size:.8rem;color:var(--muted);line-height:1.6;margin-bottom:.6rem;"
-           data-pt="O template e o código gerado seguirão o idioma escolhido."
-           data-en="The generated template and code will follow the chosen language.">
-          O template e o código gerado seguirão o idioma escolhido.
-        </p>
-        <div class="lang-opt-grid" id="lang-opts">
-          <label class="lang-opt-card sel" onclick="selectLangOpt(this,'pt')">
-            <input type="radio" name="app-lang" value="pt" checked>
-            <span class="lang-flag">🇧🇷</span>
-            <span>
-              <strong data-pt="Português" data-en="Portuguese">Português</strong>
-              <small data-pt="Template elaborado — clientes, finanças, usuários"
-                     data-en="Elaborate template — customers, finance, users">Template elaborado — clientes, finanças, usuários</small>
-            </span>
-          </label>
-          <label class="lang-opt-card" onclick="selectLangOpt(this,'en')">
-            <input type="radio" name="app-lang" value="en">
-            <span class="lang-flag">🇺🇸</span>
-            <span>
-              <strong>English</strong>
-              <small data-pt="Skeleton simples — login + dashboard. A comunidade expande."
-                     data-en="Simple skeleton — login + dashboard. Community expands it.">Skeleton simples — login + dashboard. A comunidade expande.</small>
-            </span>
-          </label>
-        </div>
+    <!-- STEP 1: Template selection -->
+    <div id="form-template">
+      <p style="font-size:.8rem;color:var(--muted);line-height:1.6;margin-bottom:.75rem;">
+        Escolha o template. Ele define o que o app já vem com — telas, banco e código prontos.
+      </p>
+      <div class="tpl-grid" id="tpl-opts">
+        <?php foreach ($_templates as $tpl): ?>
+        <label class="tpl-card<?= $tpl === reset($_templates) ? ' sel' : '' ?>"
+               onclick="selectTemplate(this, '<?= htmlspecialchars($tpl['name']) ?>')">
+          <input type="radio" name="app-template" value="<?= htmlspecialchars($tpl['name']) ?>"
+                 <?= $tpl === reset($_templates) ? 'checked' : '' ?>>
+          <strong>
+            <i data-lucide="layers"></i>
+            <?= htmlspecialchars($tpl['label'] ?? $tpl['name']) ?>
+          </strong>
+          <small><?= htmlspecialchars($tpl['description'] ?? '') ?></small>
+        </label>
+        <?php endforeach; ?>
       </div>
+      <p style="margin-top:.875rem;font-size:.75rem;color:var(--muted);">
+        Mais templates em <a href="templates.php" style="color:var(--warm);">Templates</a>.
+      </p>
     </div>
 
     <!-- STEP 2: App name -->
     <div id="form-new" style="display:none;">
-      <div style="background:var(--cream);border-radius:10px;padding:1rem 1.1rem;margin-bottom:1.25rem;display:flex;gap:.875rem;align-items:flex-start;">
-        <i data-lucide="sparkles" style="width:20px;height:20px;stroke:var(--warm);flex-shrink:0;margin-top:.1rem;"></i>
-        <div>
-          <div style="font-weight:600;font-size:.875rem;margin-bottom:.25rem;"
-               data-pt="Como funciona" data-en="How it works">Como funciona</div>
-          <div style="font-size:.8rem;color:var(--muted);line-height:1.6;"
-               data-pt="Em 3 passos você define o nome, escolhe os módulos e descreve o contexto. O Fenor prepara o ambiente e orienta o Claude."
-               data-en="In 3 steps you define the name, choose modules and describe the context. Fenor sets up the environment and guides Claude.">
-            Em 3 passos você define o nome, escolhe os módulos e descreve o contexto. O Fenor prepara o ambiente e orienta o Claude.
-          </div>
-        </div>
+      <div class="field" style="margin-bottom:1rem;">
+        <label>Nome do app</label>
+        <input type="text" id="app-name" placeholder="meu-app" autofocus>
+        <small>Letras minúsculas, números e hífens. Ex: <strong>clinica-central</strong>, <strong>meu-crm</strong></small>
       </div>
-      <div class="field">
-        <label data-pt="Nome do app" data-en="App name">Nome do app</label>
-        <input type="text" id="app-name" placeholder="my-app" autofocus>
-        <small data-pt="Letras minúsculas, números e hífens. Ex: <strong>clinica-central</strong>, <strong>meu-crm</strong>"
-               data-en="Lowercase letters, numbers and hyphens. E.g.: <strong>clinic-portal</strong>, <strong>my-crm</strong>">
-          Letras minúsculas, números e hífens. Ex: <strong>clinica-central</strong>, <strong>meu-crm</strong>
-        </small>
-      </div>
-    </div>
-
-    <!-- STEP 3: Modules (wizard) -->
-    <div id="form-wizard" style="display:none;">
-
-      <div class="field">
-        <div class="wiz-section-label" data-pt="Módulos do sistema" data-en="System modules">Módulos do sistema</div>
-        <p style="font-size:.8rem;color:var(--muted);line-height:1.6;margin-bottom:.6rem;"
-           data-pt="O app nasce com os módulos selecionados — telas, banco e rotas prontos."
-           data-en="The app starts with the selected modules — screens, database and routes ready.">
-          O app nasce com os módulos selecionados — telas, banco e rotas prontos.
-        </p>
-        <div id="mod-en-notice" style="display:none;background:#fff8f5;border:1px solid #fbd3c3;border-radius:8px;padding:.6rem .875rem;margin-bottom:.6rem;font-size:.78rem;color:var(--warm);">
-          <span data-pt="Template EN: apenas Dashboard disponível. Módulos adicionais serão adicionados pela comunidade."
-                data-en="EN template: only Dashboard available. Additional modules will be added by the community.">
-            Template EN: apenas Dashboard disponível. Módulos adicionais serão adicionados pela comunidade.
-          </span>
-        </div>
-        <div class="mod-grid">
-          <label class="mod-card sel" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="dashboard" checked>
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="layout-dashboard"></i><span>Dashboard</span>
-          </label>
-          <label class="mod-card sel" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="customers" checked>
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="users"></i>
-            <span data-pt="Clientes" data-en="Customers">Clientes</span>
-          </label>
-          <label class="mod-card sel" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="users" checked>
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="user-cog"></i>
-            <span data-pt="Usuários" data-en="Users">Usuários</span>
-          </label>
-          <label class="mod-card" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="finance">
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="banknote"></i>
-            <span data-pt="Financeiro" data-en="Finance">Financeiro</span>
-          </label>
-          <label class="mod-card" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="calendar">
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="calendar-check"></i>
-            <span data-pt="Agenda" data-en="Calendar">Agenda</span>
-          </label>
-          <label class="mod-card" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="services">
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="wrench"></i>
-            <span data-pt="Serviços" data-en="Services">Serviços</span>
-          </label>
-          <label class="mod-card" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="vehicles">
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="car"></i>
-            <span data-pt="Veículos" data-en="Vehicles">Veículos</span>
-          </label>
-          <label class="mod-card" onclick="toggleMod(this)">
-            <input type="checkbox" name="mod" value="reports">
-            <span class="soon-badge">Soon</span>
-            <i data-lucide="bar-chart-2"></i>
-            <span data-pt="Relatórios" data-en="Reports">Relatórios</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="field">
-        <div class="wiz-section-label" data-pt="Controle de acesso" data-en="Access control">Controle de acesso</div>
-        <div class="opt-grid">
-          <label class="opt-card sel" onclick="selectOpt(this,'acesso')">
-            <input type="radio" name="acesso" value="login" checked>
-            <span class="opt-icon"><i data-lucide="lock"></i></span>
-            <span>
-              <strong data-pt="Login obrigatório" data-en="Mandatory login">Login obrigatório</strong>
-              <small data-pt="Todos os usuários precisam de conta" data-en="All users need an account">Todos os usuários precisam de conta</small>
-            </span>
-          </label>
-          <label class="opt-card" onclick="selectOpt(this,'acesso')">
-            <input type="radio" name="acesso" value="public">
-            <span class="opt-icon"><i data-lucide="globe"></i></span>
-            <span>
-              <strong data-pt="Público" data-en="Public">Público</strong>
-              <small data-pt="Sem login, acesso aberto" data-en="No login, open access">Sem login, acesso aberto</small>
-            </span>
-          </label>
-          <label class="opt-card" onclick="selectOpt(this,'acesso')">
-            <input type="radio" name="acesso" value="mixed">
-            <span class="opt-icon"><i data-lucide="shield-half"></i></span>
-            <span>
-              <strong data-pt="Misto" data-en="Mixed">Misto</strong>
-              <small data-pt="Parte pública + parte protegida" data-en="Public part + protected part">Parte pública + parte protegida</small>
-            </span>
-          </label>
-        </div>
-      </div>
-
-      <div class="field">
-        <div class="wiz-section-label" data-pt="Modelo de usuários" data-en="User model">Modelo de usuários</div>
-        <div class="opt-grid">
-          <label class="opt-card sel" onclick="selectOpt(this,'usuarios')">
-            <input type="radio" name="usuarios" value="multiple" checked>
-            <span class="opt-icon"><i data-lucide="users-2"></i></span>
-            <span>
-              <strong data-pt="Múltiplos usuários" data-en="Multiple users">Múltiplos usuários</strong>
-              <small data-pt="Cada pessoa tem seu próprio login" data-en="Each person has their own login">Cada pessoa tem seu próprio login</small>
-            </span>
-          </label>
-          <label class="opt-card" onclick="selectOpt(this,'usuarios')">
-            <input type="radio" name="usuarios" value="single">
-            <span class="opt-icon"><i data-lucide="user-check"></i></span>
-            <span>
-              <strong data-pt="Admin único" data-en="Single admin">Admin único</strong>
-              <small data-pt="Somente um administrador" data-en="Single administrator only">Somente um administrador</small>
-            </span>
-          </label>
-        </div>
-      </div>
-
-      <div class="field">
-        <div class="wiz-section-label" data-pt="Dados isolados entre usuários?" data-en="Isolated data between users?">Dados isolados entre usuários?</div>
-        <div class="toggle-row">
-          <label class="toggle-opt sel" onclick="selectOpt(this,'isolamento')">
-            <input type="radio" name="isolamento" value="yes" checked>
-            <i data-lucide="lock-keyhole" style="width:15px;height:15px;"></i>
-            <span data-pt="Sim, isolado" data-en="Yes, isolated">Sim, isolado</span>
-          </label>
-          <label class="toggle-opt" onclick="selectOpt(this,'isolamento')">
-            <input type="radio" name="isolamento" value="no">
-            <i data-lucide="share-2" style="width:15px;height:15px;"></i>
-            <span data-pt="Não, compartilhado" data-en="No, shared">Não, compartilhado</span>
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <!-- STEP 4: Context + GitHub -->
-    <div id="form-context" style="display:none;">
-      <div class="field">
+      <?php if ($_hasGithubToken): ?>
+      <div class="field" style="margin-bottom:0;">
         <label style="display:flex;align-items:center;gap:.4rem;">
-          <i data-lucide="github" style="width:15px;height:15px;"></i>
-          <span data-pt="Repositório GitHub" data-en="GitHub Repository">Repositório GitHub</span>
-          <small style="color:var(--muted);font-weight:400;" data-pt="(opcional)" data-en="(optional)">(opcional)</small>
+          <i data-lucide="github" style="width:14px;height:14px;"></i>
+          Repositório GitHub <small style="color:var(--muted);font-weight:400;">(opcional)</small>
         </label>
-        <?php if ($_hasGithubToken): ?>
-          <div style="display:flex;gap:.4rem;align-items:center;">
-            <select id="app-github"
-              style="flex:1;padding:.45rem .65rem;border:1px solid var(--rule);border-radius:8px;
-                     font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);
-                     color:var(--ink);">
-              <option value="">— <?= $_ghOwner ? htmlspecialchars($_ghOwner).'/' : '' ?>...</option>
-            </select>
-            <button type="button" onclick="loadGhRepos('app-github')" title="Refresh list"
-              style="padding:.4rem .55rem;border:1px solid var(--rule);border-radius:7px;
-                     background:var(--paper);cursor:pointer;color:var(--muted);flex-shrink:0;">
-              <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i>
-            </button>
-          </div>
-          <small data-pt="Selecione ou aguarde carregar a lista dos seus repositórios."
-                 data-en="Select from your repositories list.">
-            Selecione ou aguarde carregar a lista dos seus repositórios.
-          </small>
-        <?php else: ?>
-          <input type="text" id="app-github"
-            placeholder="<?= $_ghOwner ? htmlspecialchars($_ghOwner).'/nome-do-repo' : 'owner/nome-do-repo' ?>"
-            style="font-family:'Geist Mono',monospace;font-size:.8rem;">
-          <small>
-            <a href="settings.php" style="color:var(--warm);"
-               data-pt="Conecte o GitHub em Settings" data-en="Connect GitHub in Settings">
-              Conecte o GitHub em Settings
-            </a>
-            <span data-pt=" para selecionar da lista." data-en=" to select from a list."> para selecionar da lista.</span>
-          </small>
-        <?php endif; ?>
+        <div style="display:flex;gap:.4rem;align-items:center;">
+          <select id="app-github"
+            style="flex:1;padding:.45rem .65rem;border:1px solid var(--rule);border-radius:8px;
+                   font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);color:var(--ink);">
+            <option value="">— <?= $_ghOwner ? htmlspecialchars($_ghOwner).'/' : '' ?>...</option>
+          </select>
+          <button type="button" onclick="loadGhRepos('app-github')" title="Atualizar"
+            style="padding:.4rem .55rem;border:1px solid var(--rule);border-radius:7px;
+                   background:var(--paper);cursor:pointer;color:var(--muted);flex-shrink:0;">
+            <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i>
+          </button>
+        </div>
       </div>
-
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:.4rem;">
-          <i data-lucide="bot" style="width:15px;height:15px;stroke:var(--warm);"></i>
-          <span data-pt="Contexto para o Claude" data-en="Context for Claude">Contexto para o Claude</span>
-          <span style="font-size:.72rem;font-weight:400;color:var(--muted);background:var(--cream);padding:.1rem .45rem;border-radius:4px;"
-                data-pt="obrigatório" data-en="required">obrigatório</span>
-        </label>
-        <small style="margin-bottom:.5rem;display:block;"
-               data-pt="Descreva o sistema com detalhes. Claude lê isso antes de começar."
-               data-en="Describe the system in detail. Claude reads this before starting.">
-          Descreva o sistema com detalhes. Claude lê isso antes de começar.
-        </small>
-        <textarea id="app-brief" rows="11" spellcheck="false"
-          style="width:100%;padding:.75rem;border:1px solid var(--rule);border-radius:8px;font-family:'Geist Mono',monospace;font-size:.78rem;line-height:1.7;resize:vertical;background:var(--paper);color:var(--ink);border-color:var(--warm);box-shadow:0 0 0 3px rgba(217,99,58,.08);">
-        </textarea>
-      </div>
+      <?php else: ?>
+      <input type="hidden" id="app-github" value="">
+      <?php endif; ?>
     </div>
 
     <!-- Publish / Provision / Edit forms -->
@@ -748,45 +480,29 @@ const _appsData       = <?= $appsJson ?>;
 const _hasGithubToken = <?= $_hasGithubToken ? 'true' : 'false' ?>;
 const _ghOwner        = '<?= addslashes($_ghOwner) ?>';
 let _mode = 'new', _app = '', _to = '', _step = 1;
-let _ghRepos = []; // cached repo list
+let _ghRepos = [];
 
-// Translation helper
-function t(pt, en) { return studioLang() === 'en' ? en : pt; }
-
-// Wizard language selection
-function selectLangOpt(card, lang) {
-  document.querySelectorAll('#lang-opts .lang-opt-card').forEach(c => c.classList.remove('sel'));
+function selectTemplate(card, name) {
+  document.querySelectorAll('#tpl-opts .tpl-card').forEach(c => c.classList.remove('sel'));
   card.classList.add('sel');
   card.querySelector('input').checked = true;
-  applyModuleLang(lang);
 }
 
-// Enable/disable modules based on template language
-function applyModuleLang(lang) {
-  const notice = document.getElementById('mod-en-notice');
-  if (notice) notice.style.display = lang === 'en' ? '' : 'none';
+function getSelectedTemplate() {
+  const radio = document.querySelector('#tpl-opts input[name="app-template"]:checked');
+  return radio ? radio.value : 'base';
+}
 
-  document.querySelectorAll('.mod-card').forEach(function(card) {
-    const val = card.querySelector('input').value;
-    const disabled = lang === 'en' && val !== 'dashboard';
-    card.classList.toggle('mod-card--disabled', disabled);
-    if (disabled) {
-      card.querySelector('input').checked = false;
-      card.querySelector('input').disabled = true;
-      card.classList.remove('sel');
-    } else {
-      card.querySelector('input').disabled = false;
-      if (val === 'dashboard') {
-        card.querySelector('input').checked = true;
-        card.classList.add('sel');
-      }
-    }
+function setWizStep(n) {
+  _step = n;
+  ['wp-s1','wp-s2'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const step = i + 1;
+    el.className = 'wiz-step ' + (n > step ? 'done' : n === step ? 'active' : '');
   });
-}
-
-function getSelectedLang() {
-  const radio = document.querySelector('#lang-opts input[name="app-lang"]:checked');
-  return radio ? radio.value : 'pt';
+  const line = document.getElementById('wp-line1');
+  if (line) line.className = 'wiz-connector' + (n > 1 ? ' done' : '');
 }
 
 function openModal(mode, app = '', to = '') {
@@ -795,27 +511,21 @@ function openModal(mode, app = '', to = '') {
   document.getElementById('modal-output').style.display = 'none';
   document.getElementById('modal-log').textContent = '';
   document.getElementById('btn-action').disabled = false;
-  ['form-lang','form-new','form-wizard','form-context','form-publish','form-provision','form-edit'].forEach(id =>
-    document.getElementById(id).style.display = 'none'
-  );
+  ['form-template','form-new','form-publish','form-provision','form-edit'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
   document.getElementById('modal-progress').style.display = 'none';
   document.getElementById('btn-back').style.display = 'none';
   document.getElementById('wiz-progress').style.display = 'none';
 
   if (mode === 'new') {
-    document.getElementById('modal-title').textContent = t('Novo app', 'New app');
-    document.getElementById('form-lang').style.display = '';
-    document.getElementById('btn-action').textContent = t('Próximo →', 'Next →');
+    document.getElementById('modal-title').textContent = 'Novo app';
+    document.getElementById('form-template').style.display = '';
+    document.getElementById('btn-action').textContent = 'Próximo →';
     document.getElementById('wiz-progress').style.display = '';
-    // Pre-select language matching current Studio language
-    const stLang = studioLang();
-    document.querySelectorAll('#lang-opts .lang-opt-card').forEach(c => {
-      const val = c.querySelector('input').value;
-      c.classList.toggle('sel', val === stLang);
-      c.querySelector('input').checked = val === stLang;
-    });
-    applyModuleLang(stLang);
     setWizStep(1);
+    setTimeout(() => lucide.createIcons(), 30);
 
   } else if (mode === 'edit') {
     const meta = _appsData[app] || {};
@@ -845,19 +555,18 @@ function openModal(mode, app = '', to = '') {
   }
 }
 
-// Progress item map — regexes match EN output from bin/newapp
 const _piMap = [
-  { re: /✓ Directory/,    icon: 'folder',        label: () => t('Diretório criado',       'App directory created') },
-  { re: /✓ System user/,  icon: 'user',           label: () => t('Usuário isolado',         'Isolated system user') },
-  { re: /✓ Database/,     icon: 'database',       label: () => t('Banco configurado',       'Database configured') },
-  { re: /✓ Tables/,       icon: 'table-2',        label: () => t('Tabelas criadas',         'Database tables created') },
-  { re: /✓ Terminal/,     icon: 'terminal',       label: () => t('Terminal configurado',    'Web terminal configured') },
-  { re: /✓ \.env/,        icon: 'file-cog',       label: () => t('Variáveis configuradas',  'Env variables set') },
-  { re: /✓ Boilerplate/,  icon: 'layers',         label: () => t('Código instalado',        'Boilerplate installed') },
-  { re: /✓ Memory/,       icon: 'brain-circuit',  label: () => t('Contexto inicializado',   'Claude context initialized') },
-  { re: /✓ Git/,          icon: 'git-branch',     label: () => t('Git inicializado',        'Git initialized') },
-  { re: /DNS/,            icon: 'globe',          label: () => t('DNS configurado',         'DNS configured') },
-  { re: /✓ Permissions/,  icon: 'shield-check',   label: () => t('Permissões ajustadas',    'Permissions set') },
+  { re: /✓ Directory/,   icon: 'folder',       label: () => 'Diretório criado' },
+  { re: /✓ System user/, icon: 'user',          label: () => 'Usuário isolado' },
+  { re: /✓ Database/,    icon: 'database',      label: () => 'Banco configurado' },
+  { re: /✓ Tables/,      icon: 'table-2',       label: () => 'Tabelas criadas' },
+  { re: /✓ Terminal/,    icon: 'terminal',      label: () => 'Terminal configurado' },
+  { re: /✓ \.env/,       icon: 'file-cog',      label: () => 'Variáveis configuradas' },
+  { re: /✓ Template/,    icon: 'layers',        label: () => 'Template instalado' },
+  { re: /✓ Memory/,      icon: 'brain-circuit', label: () => 'Contexto inicializado' },
+  { re: /✓ Git/,         icon: 'git-branch',    label: () => 'Git inicializado' },
+  { re: /DNS/,           icon: 'globe',         label: () => 'DNS configurado' },
+  { re: /✓ Permissions/, icon: 'shield-check',  label: () => 'Permissões ajustadas' },
 ];
 
 function animateProgress(output, appName, success) {
@@ -937,38 +646,13 @@ function backStep() {
   if (_mode !== 'new') return;
   if (_step === 2) {
     document.getElementById('form-new').style.display = 'none';
-    document.getElementById('form-lang').style.display = '';
-    document.getElementById('modal-title').textContent = t('Novo app', 'New app');
-    document.getElementById('btn-action').textContent = t('Próximo →', 'Next →');
+    document.getElementById('form-template').style.display = '';
+    document.getElementById('modal-title').textContent = 'Novo app';
+    document.getElementById('btn-action').textContent = 'Próximo →';
     document.getElementById('btn-back').style.display = 'none';
     setWizStep(1);
-  } else if (_step === 3) {
-    document.getElementById('form-wizard').style.display = 'none';
-    document.getElementById('form-new').style.display = '';
-    document.getElementById('btn-action').textContent = t('Próximo →', 'Next →');
-    setWizStep(2);
-  } else if (_step === 4) {
-    document.getElementById('form-context').style.display = 'none';
-    document.getElementById('form-wizard').style.display = '';
-    document.getElementById('btn-action').textContent = t('Próximo →', 'Next →');
-    setWizStep(3);
+    setTimeout(() => lucide.createIcons(), 30);
   }
-  setTimeout(() => lucide.createIcons(), 30);
-}
-
-function toggleMod(card) {
-  if (card.classList.contains('mod-card--disabled')) return;
-  const cb = card.querySelector('input');
-  cb.checked = !cb.checked;
-  card.classList.toggle('sel', cb.checked);
-}
-
-function selectOpt(card, name) {
-  document.querySelectorAll(`#form-wizard [name="${name}"]`).forEach(inp => {
-    inp.closest('.opt-card, .toggle-opt').classList.remove('sel');
-  });
-  card.querySelector('input').checked = true;
-  card.classList.add('sel');
 }
 
 async function runAction() {
@@ -982,95 +666,52 @@ async function runAction() {
   let endpoint, body;
 
   if (_mode === 'new') {
-    const name = document.getElementById('app-name').value.trim();
-    const lang = getSelectedLang();
+    const template = getSelectedTemplate();
 
     if (_step === 1) {
-      // Language selected → go to name
+      // Template selected → go to name
       out.style.display = 'none';
-      document.getElementById('form-lang').style.display = 'none';
+      document.getElementById('form-template').style.display = 'none';
       document.getElementById('form-new').style.display = '';
-      document.getElementById('modal-title').textContent = t('Novo app', 'New app');
-      document.getElementById('btn-action').textContent = t('Próximo →', 'Next →');
+      document.getElementById('btn-action').textContent = 'Criar app →';
       document.getElementById('btn-back').style.display = '';
       btn.disabled = false;
       setWizStep(2);
+      if (_hasGithubToken) loadGhRepos('app-github');
       setTimeout(() => { document.getElementById('app-name').focus(); lucide.createIcons(); }, 50);
       return;
     }
 
-    if (_step === 2) {
-      if (!name) { alert(t('Informe o nome do app', 'Enter the app name')); btn.disabled = false; out.style.display = 'none'; return; }
-      if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { alert(t('Use apenas letras minúsculas, números e hífens', 'Use only lowercase letters, numbers and hyphens')); btn.disabled = false; out.style.display = 'none'; return; }
-      out.style.display = 'none';
-      document.getElementById('form-new').style.display = 'none';
-      document.getElementById('form-wizard').style.display = '';
-      document.getElementById('modal-title').textContent = t('Módulos — ', 'Modules — ') + name;
-      document.getElementById('btn-action').textContent = t('Próximo →', 'Next →');
-      btn.disabled = false;
-      setWizStep(3);
-      applyModuleLang(lang);
-      setTimeout(() => lucide.createIcons(), 30);
-      return;
-    }
-
-    if (_step === 3) {
-      out.style.display = 'none';
-      document.getElementById('form-wizard').style.display = 'none';
-      document.getElementById('form-context').style.display = '';
-      document.getElementById('modal-title').textContent = t('Contexto — ', 'Context — ') + name;
-      maybeLoadReposForWizard();
-      document.getElementById('btn-action').textContent = t('Criar app →', 'Create app →');
-      // Populate textarea template based on language
-      const ta = document.getElementById('app-brief');
-      if (!ta.value.trim()) {
-        ta.value = lang === 'en'
-          ? '## What this system should do\nDescribe the main goal and the problem it solves.\n\n## Target users\nWho will use it? E.g.: sales team, clinic staff, fleet managers.\n\n## Essential features\nList in priority order:\n-\n-\n-\n\n## Business rules\n-\n\n## Out of scope\n-'
-          : '## O que este sistema deve fazer\nDescreva o objetivo principal e o problema que resolve.\n\n## Público-alvo\nQuem vai usar? Ex: vendedores, médicos, gestores.\n\n## Funcionalidades essenciais\nListe em ordem de prioridade:\n-\n-\n-\n\n## Regras de negócio\n-\n\n## Fora do escopo\n-';
-      }
-      btn.disabled = false;
-      setWizStep(4);
-      setTimeout(() => lucide.createIcons(), 30);
-      return;
-    }
-
-    // Step 4 → register + provision
-    const brief = document.getElementById('app-brief').value.trim();
-    if (!brief || brief.length < 30) {
-      alert(t('Descreva o contexto do sistema antes de continuar.', 'Describe the system context before continuing.'));
-      btn.disabled = false; out.style.display = 'none'; return;
-    }
-    const mods      = [...document.querySelectorAll('#form-wizard input[name="mod"]:checked')].map(e => e.value);
-    const acesso    = document.querySelector('#form-wizard input[name="acesso"]:checked')?.value    || 'login';
-    const usuarios  = document.querySelector('#form-wizard input[name="usuarios"]:checked')?.value  || 'multiple';
-    const isolamento = document.querySelector('#form-wizard input[name="isolamento"]:checked')?.value || 'yes';
+    // Step 2 → register + provision
+    const name = document.getElementById('app-name').value.trim();
+    if (!name) { alert('Informe o nome do app'); btn.disabled = false; out.style.display = 'none'; return; }
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { alert('Use apenas letras minúsculas, números e hífens'); btn.disabled = false; out.style.display = 'none'; return; }
 
     out.style.display = 'none';
     document.getElementById('modal-progress').style.display = 'block';
     document.getElementById('prog-spinner').style.display = 'flex';
     document.getElementById('progress-items').style.display = 'none';
     document.getElementById('prog-success').style.display = 'none';
-    document.getElementById('prog-spinner-label').textContent = t('Registrando app...', 'Registering app...');
-    btn.textContent = t('Criando...', 'Creating...');
+    document.getElementById('prog-spinner-label').textContent = 'Registrando app...';
+    btn.textContent = 'Criando...';
     setTimeout(() => lucide.createIcons(), 30);
 
     try {
       const r1 = await fetch('api/newapp.php', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
-          name, description: name, language: lang,
-          github_repo: document.getElementById('app-github').value.trim(),
-          config: { modules: mods, access: acesso, users: usuarios, isolation: isolamento, context: brief }
+          name, description: name, template,
+          github_repo: document.getElementById('app-github').value.trim()
         })
       });
       if (r1.status === 401) { location.href = 'login.php'; return; }
       const d1 = await r1.json();
       if (!d1.success) {
-        document.getElementById('prog-spinner-label').textContent = t('Erro: ', 'Error: ') + (d1.error || t('falha ao registrar.', 'registration failed.'));
-        btn.disabled = false; btn.textContent = t('Tentar novamente', 'Try again'); return;
+        document.getElementById('prog-spinner-label').textContent = 'Erro: ' + (d1.error || 'falha ao registrar.');
+        btn.disabled = false; btn.textContent = 'Tentar novamente'; return;
       }
 
-      document.getElementById('prog-spinner-label').textContent = t('Provisionando ambiente DEV...', 'Provisioning DEV environment...');
+      document.getElementById('prog-spinner-label').textContent = 'Provisionando ambiente DEV...';
 
       const r2 = await fetch('api/provision.php', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1079,10 +720,9 @@ async function runAction() {
       if (r2.status === 401) { location.href = 'login.php'; return; }
       const d2 = await r2.json();
 
-      // If a repo was selected, set the git remote automatically after provisioning
       const ghRepo = document.getElementById('app-github').value.trim();
       if (d2.success && ghRepo && _hasGithubToken) {
-        document.getElementById('prog-spinner-label').textContent = t('Configurando GitHub...', 'Configuring GitHub...');
+        document.getElementById('prog-spinner-label').textContent = 'Configurando GitHub...';
         try {
           await fetch('api/git.php', {
             method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1094,8 +734,8 @@ async function runAction() {
       animateProgress(d2.output || '', name, d2.success);
 
     } catch(e) {
-      document.getElementById('prog-spinner-label').textContent = t('Erro: ', 'Error: ') + e.message;
-      btn.disabled = false; btn.textContent = t('Tentar novamente', 'Try again');
+      document.getElementById('prog-spinner-label').textContent = 'Erro: ' + e.message;
+      btn.disabled = false; btn.textContent = 'Tentar novamente';
     }
     return;
 
@@ -1211,11 +851,6 @@ async function setGhRepoSelect(selectId, rawValue) {
   }
 }
 
-// Auto-load repos when step 4 becomes visible
-function maybeLoadReposForWizard() {
-  if (_hasGithubToken) loadGhRepos('app-github');
-}
-
 async function loadSshKey(name) {
   const section = document.getElementById('ssh-section');
   section.style.display = 'none';
@@ -1227,30 +862,29 @@ async function loadSshKey(name) {
 
 async function testSshConnection() {
   const status = document.getElementById('ssh-status');
-  status.textContent = t('Testando...', 'Testing...');
+  status.textContent = 'Testando...';
   const resp = await fetch('api/ssh-key.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: _app, action:'test'}) });
   const data = await resp.json();
-  status.innerHTML = data.success ? `<span style="color:#2e7d32;">✓ ${t('Conectado!','Connected!')}</span>` : `<span style="color:#c62828;">✗ ${data.output}</span>`;
+  status.innerHTML = data.success ? '<span style="color:#2e7d32;">✓ Conectado!</span>' : `<span style="color:#c62828;">✗ ${data.output}</span>`;
 }
 
 async function gitPush() {
   const status = document.getElementById('ssh-status');
-  status.textContent = t('Enviando...', 'Pushing...');
+  status.textContent = 'Enviando...';
   const resp = await fetch('api/ssh-key.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: _app, action:'push'}) });
   const data = await resp.json();
-  status.innerHTML = data.success ? `<span style="color:#2e7d32;">✓ ${t('Push feito!','Pushed!')}</span>` : `<span style="color:#c62828;">✗ ${data.output}</span>`;
+  status.innerHTML = data.success ? '<span style="color:#2e7d32;">✓ Push feito!</span>' : `<span style="color:#c62828;">✗ ${data.output}</span>`;
 }
 
 function copyKey() {
   const key = document.getElementById('ssh-pubkey').value;
-  const done = () => { document.getElementById('ssh-status').innerHTML = `<span style="color:#2e7d32;">✓ ${t('Copiado!','Copied!')}</span>`; };
+  const done = () => { document.getElementById('ssh-status').innerHTML = '<span style="color:#2e7d32;">✓ Copiado!</span>'; };
   navigator.clipboard ? navigator.clipboard.writeText(key).then(done) : (fallbackCopy(key), done());
 }
 
 function copyLog() {
   const btn = event.currentTarget;
-  const label = t('Copiado!', 'Copied!');
-  const done = () => { btn.textContent = '✓ ' + label; btn.style.background = 'var(--success)'; btn.style.color = '#fff'; setTimeout(() => { btn.textContent = t('Copiar','Copy'); btn.style.background = ''; btn.style.color = ''; }, 2000); };
+  const done = () => { btn.textContent = '✓ Copiado!'; btn.style.background = 'var(--success)'; btn.style.color = '#fff'; setTimeout(() => { btn.textContent = 'Copiar'; btn.style.background = ''; btn.style.color = ''; }, 2000); };
   navigator.clipboard ? navigator.clipboard.writeText(document.getElementById('modal-log').textContent).then(done) : (fallbackCopy(document.getElementById('modal-log').textContent), done());
 }
 

@@ -4,7 +4,7 @@ set -e
 
 APP=$1
 DESCRIPTION="${2:-}"
-APP_LANG="${3:-pt}"   # Language: pt (default, elaborate) | en (skeleton)
+TEMPLATE="${3:-base}"
 source /etc/fenor/.env
 
 # Read settings from database
@@ -14,16 +14,18 @@ ANTHROPIC_API_KEY=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fe
 
 if [ -z "$APP" ]; then
   echo ""
-  echo "  Usage: newapp <app-name> [description]"
+  echo "  Usage: newapp <app-name> [description] [template]"
   echo ""
   echo "  Examples:"
   echo "    newapp my-crm"
-  echo "    newapp clinic-portal \"Patient management system\""
+  echo "    newapp my-crm \"Gestão de clientes\" crm"
+  echo "    fenor templates list   — ver templates disponíveis"
   echo ""
   exit 1
 fi
 
 APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+TEMPLATE_SAFE=$(echo "$TEMPLATE" | tr -dc 'a-z0-9-')
 DB_SCHEMA="${APP_SAFE}_dev"
 DB_USER="${APP_SAFE}_dev_user"
 DB_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 20)
@@ -147,19 +149,17 @@ chown "$SYS_USER:www-data" "$APP_PATH/.env"
 chmod 640 "$APP_PATH/.env"
 echo "  ✓ .env configured"
 
-# 5. Copy boilerplate (language-specific template)
-# Tries: /etc/fenor/boilerplate/{lang}/ → /etc/fenor/boilerplate/ → empty scaffold
-BOILERPLATE_LANG="/etc/fenor/boilerplate/$APP_LANG"
-BOILERPLATE_BASE="/etc/fenor/boilerplate"
-if [ -d "$BOILERPLATE_LANG" ]; then
-  cp -r "$BOILERPLATE_LANG/." "$APP_PATH/"
-  echo "  ✓ Boilerplate copied (template: $APP_LANG)"
-elif [ -d "$BOILERPLATE_BASE" ]; then
-  cp -r "$BOILERPLATE_BASE/." "$APP_PATH/"
-  echo "  ✓ Boilerplate copied (template: default)"
+# 5. Copy template
+TEMPLATE_DIR="/etc/fenor/templates/$TEMPLATE_SAFE"
+if [ -d "$TEMPLATE_DIR" ]; then
+  cp -r "$TEMPLATE_DIR/." "$APP_PATH/"
+  echo "  ✓ Template: $TEMPLATE_SAFE"
+elif [ -d "/etc/fenor/templates/base" ]; then
+  cp -r "/etc/fenor/templates/base/." "$APP_PATH/"
+  echo "  ✓ Template: base (fallback)"
 else
   mkdir -p "$APP_PATH/front" "$APP_PATH/src"
-  echo "  ! Boilerplate not found — empty scaffold created"
+  echo "  ! Template not found — empty scaffold created"
 fi
 
 # Initialize database tables
@@ -212,15 +212,18 @@ ${DESCRIPTION:-No description}
 - PHP + Nginx
 - PostgreSQL — isolated schema per environment
 - Cloudflare Tunnel (automatic SSL)
+- Template: $TEMPLATE_SAFE
 
 ## Structure
 \`\`\`
 $APP/
-├── front/        → PHP views, CSS, JS
-├── back/         → PHP REST API
-├── memory/       → cross-session context (INDEX.md, progress/, log/)
-├── CLAUDE.md     → this file
-└── .env          → credentials (never commit)
+├── front/        → roteador PHP, CSS, JS
+├── src/          → Controllers, Auth, Config
+├── views/        → templates PHP
+├── database/     → init.sql (schema do app)
+├── memory/       → contexto entre sessões (INDEX.md, progress/, log/)
+├── CLAUDE.md     → este arquivo
+└── .env          → credenciais (nunca commitar)
 \`\`\`
 
 ## Rules

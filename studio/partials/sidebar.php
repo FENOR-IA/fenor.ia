@@ -12,6 +12,9 @@ $domain  = htmlspecialchars($config['base_domain'] ?? '');
     <a href="<?= $baseUrl ?? '' ?>dashboard.php" class="<?= $active('dashboard') ?>">
       <i data-lucide="layout-grid" style="width:16px;height:16px;"></i> Apps
     </a>
+    <a href="<?= $baseUrl ?? '' ?>templates.php" class="<?= $active('templates') ?>">
+      <i data-lucide="layers" style="width:16px;height:16px;"></i> Templates
+    </a>
     <a href="<?= $baseUrl ?? '' ?>banco.php" target="_blank" rel="noopener" class="<?= $active('banco') ?>">
       <i data-lucide="database" style="width:16px;height:16px;"></i> Database
     </a>
