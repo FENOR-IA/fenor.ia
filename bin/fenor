@@ -78,6 +78,16 @@ MD
     echo "  ✓ Memory saved and versioned."
     ;;
 
+  update)
+    echo ""
+    echo "  Atualizando Fenor..."
+    curl -fsSL https://fenor.ia.br/update.sh | bash
+    ;;
+
+  version|--version|-v)
+    echo "  Fenor $(cat /etc/fenor/version 2>/dev/null || echo 'versão desconhecida')"
+    ;;
+
   templates)
     SUBCMD=$1; shift
     TEMPLATES_DIR="/etc/fenor/templates"
@@ -129,6 +139,8 @@ with open('$TEMPLATES_DIR/index.json') as f:
     echo "    fenor status                 List all apps and URLs"
     echo "    fenor logs <app> [env]       Tail app logs"
     echo "    fenor memory <app> [env]     Save session log"
+    echo "    fenor update                 Update Fenor (scripts + studio + templates)"
+    echo "    fenor version                Show installed version"
     echo "    fenor templates list         List available templates"
     echo "    fenor templates update       Update templates from GitHub"
     echo ""

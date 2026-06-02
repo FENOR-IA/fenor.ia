@@ -9,6 +9,12 @@ $config  = require  __DIR__ . '/config/config.php';
 $success = '';
 $error   = '';
 
+$_fenorVersion     = trim(@file_get_contents('/etc/fenor/version') ?: '—');
+$_templatesIndex   = '/etc/fenor/templates/index.json';
+$_templates        = file_exists($_templatesIndex)
+    ? (json_decode(file_get_contents($_templatesIndex), true) ?: [])
+    : [];
+
 // Platform settings (excludes GitHub — managed in dedicated section)
 $fields = [
     'BASE_DOMAIN'        => ['label' => 'Base domain',       'type' => 'text',     'placeholder' => 'fenor.ia.br'],
@@ -366,6 +372,38 @@ $groups = [
                     data-pt="Atualizar senha" data-en="Update password">Atualizar senha</button>
           </form>
         </div>
+      </div>
+
+      <!-- Sistema -->
+      <div style="border:1px solid var(--rule);border-radius:12px;padding:1.25rem;margin-top:1.5rem;">
+        <h2 style="font-size:.95rem;font-weight:600;margin:0 0 1rem;display:flex;align-items:center;gap:.45rem;">
+          <i data-lucide="layers" style="width:16px;height:16px;stroke:var(--warm);"></i>
+          Sistema
+        </h2>
+
+        <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1.25rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem .875rem;background:var(--cream);border-radius:8px;">
+            <span style="font-size:.8rem;color:var(--muted);">Fenor</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:.82rem;font-weight:600;">
+              v<?= htmlspecialchars($_fenorVersion) ?>
+            </span>
+          </div>
+          <?php foreach ($_templates as $tpl): ?>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem .875rem;background:var(--cream);border-radius:8px;">
+            <span style="font-size:.8rem;color:var(--muted);">Template: <?= htmlspecialchars($tpl['label'] ?? $tpl['name']) ?></span>
+            <span style="font-family:'Geist Mono',monospace;font-size:.82rem;font-weight:600;">
+              v<?= htmlspecialchars($tpl['version'] ?? '—') ?>
+            </span>
+          </div>
+          <?php endforeach; ?>
+        </div>
+
+        <div style="background:var(--ink);color:#c9d1d9;padding:.75rem 1rem;border-radius:8px;font-family:'Geist Mono',monospace;font-size:.8rem;">
+          curl -fsSL https://fenor.ia.br/update.sh | bash
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);margin:.6rem 0 0;line-height:1.6;">
+          Atualiza scripts, studio e templates oficiais. Ou via CLI: <code style="background:var(--cream);padding:.1rem .35rem;border-radius:4px;">fenor update</code>
+        </p>
       </div>
 
     </div>

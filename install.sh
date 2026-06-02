@@ -570,6 +570,10 @@ run "install-studio.sh" bash -c "curl -fsSL '$REPO_RAW/studio/install-studio.sh'
 run "Adminer" bash -c "curl -fsSL 'https://www.adminer.org/latest.php' -o /var/www/studio/adminer.php" || warn "Adminer não instalado (opcional)"
 ok "Studio instalado"
 
+step "Salvando versão instalada..."
+curl -fsSL "$REPO_RAW/VERSION" -o /etc/fenor/version 2>/dev/null || echo "1.0.0" > /etc/fenor/version
+ok "Versão: $(cat /etc/fenor/version)"
+
 step "Instalando cloudflared..."
 if ! command -v cloudflared &>/dev/null; then
   run "Download cloudflared" \
