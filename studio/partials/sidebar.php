@@ -22,5 +22,8 @@ $domain  = htmlspecialchars($config['base_domain'] ?? '');
       <i data-lucide="settings" style="width:16px;height:16px;"></i> Settings
     </a>
   </nav>
-  <div class="bottom"><?= $domain ?></div>
+  <div class="bottom">
+    <?= $domain ?>
+    <span style="opacity:.45;font-size:.7rem;">v<?= trim(@file_get_contents('/etc/fenor/version') ?: '—') ?></span>
+  </div>
 </aside>
