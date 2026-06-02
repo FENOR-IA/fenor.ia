@@ -660,8 +660,6 @@ async function runAction() {
   const out = document.getElementById('modal-output');
   const log = document.getElementById('modal-log');
   btn.disabled = true;
-  out.style.display = 'block';
-  log.textContent = t('Processando...', 'Processing...') + '\n';
 
   let endpoint, body;
 
@@ -669,8 +667,7 @@ async function runAction() {
     const template = getSelectedTemplate();
 
     if (_step === 1) {
-      // Template selected → go to name
-      out.style.display = 'none';
+      // Template selected → go to name (sem mostrar output ainda)
       document.getElementById('form-template').style.display = 'none';
       document.getElementById('form-new').style.display = '';
       document.getElementById('btn-action').textContent = 'Criar app →';
@@ -684,8 +681,8 @@ async function runAction() {
 
     // Step 2 → register + provision
     const name = document.getElementById('app-name').value.trim();
-    if (!name) { alert('Informe o nome do app'); btn.disabled = false; out.style.display = 'none'; return; }
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { alert('Use apenas letras minúsculas, números e hífens'); btn.disabled = false; out.style.display = 'none'; return; }
+    if (!name) { alert('Informe o nome do app'); btn.disabled = false; return; }
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { alert('Use apenas letras minúsculas, números e hífens'); btn.disabled = false; return; }
 
     out.style.display = 'none';
     document.getElementById('modal-progress').style.display = 'block';
@@ -752,6 +749,9 @@ async function runAction() {
     body = { name: _app, to: _to };
     btn.textContent = t(`Publicando em ${_to.toUpperCase()}...`, `Deploying to ${_to.toUpperCase()}...`);
   }
+
+  out.style.display = 'block';
+  log.textContent = 'Processando...\n';
 
   try {
     const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
