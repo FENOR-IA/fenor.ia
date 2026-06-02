@@ -20,7 +20,6 @@ $template    = preg_replace('/[^a-z0-9\-]/', '', strtolower(trim($data['template
 $config      = $data['config'] ?? [];
 $config['template'] = $template;
 $config_json = json_encode($config);
-$language    = 'pt';
 
 if (!$name) {
     echo json_encode(['success' => false, 'error' => 'Invalid name']);
@@ -29,8 +28,8 @@ if (!$name) {
 
 try {
     fenorDB()
-        ->prepare('INSERT INTO fenor_apps (name, description, github_repo, language, status, config) VALUES (?, ?, ?, ?, \'registered\', ?)')
-        ->execute([$name, $description, $github_repo, $language, $config_json]);
+        ->prepare('INSERT INTO fenor_apps (name, description, github_repo, status, config) VALUES (?, ?, ?, \'registered\', ?)')
+        ->execute([$name, $description, $github_repo, $config_json]);
     echo json_encode(['success' => true, 'message' => "App \"$name\" registered."]);
 } catch (Throwable $e) {
     $msg = strpos($e->getMessage(), 'unique') !== false || strpos($e->getMessage(), 'duplicate') !== false
