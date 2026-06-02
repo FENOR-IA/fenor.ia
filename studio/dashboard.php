@@ -569,27 +569,6 @@ const _piMap = [
   { re: /✓ Permissions/, icon: 'shield-check',  label: () => 'Permissões ajustadas' },
 ];
 
-function finishProgress(appName, appUrl, success) {
-  if (success) {
-    document.getElementById('prog-success').style.display = 'block';
-    if (appUrl) {
-      document.getElementById('prog-app-url').href = appUrl;
-      document.getElementById('prog-app-url-label').textContent = appUrl;
-    } else {
-      document.getElementById('prog-app-url').style.display = 'none';
-    }
-    lucide.createIcons();
-  }
-  document.getElementById('btn-back').style.display = 'none';
-  const btn = document.getElementById('btn-action');
-  btn.textContent = 'Abrir workspace →';
-  btn.disabled = false;
-  btn.onclick = () => { window.location.href = 'workspace.php?app=' + encodeURIComponent(appName); };
-  const cancel = document.querySelector('.modal-footer .btn-secondary');
-  cancel.textContent = 'Ficar no dashboard';
-  cancel.onclick = () => location.reload();
-}
-
 function animateProgress(output, appName, success) {
   const lines = output.split('\n');
   const items = [];
@@ -600,34 +579,22 @@ function animateProgress(output, appName, success) {
       }
     }
   }
-
-  const urlMatch = output.match(/URL:\s+(https?:\/\/\S+)/);
-  const appUrl = urlMatch ? urlMatch[1] : '';
-
   const container = document.getElementById('progress-items');
+  if (!container) return;
   container.innerHTML = '';
-  document.getElementById('prog-spinner').style.display = 'none';
   container.style.display = 'block';
-
-  if (items.length === 0) {
-    finishProgress(appName, appUrl, success);
-    return;
-  }
-
   items.forEach((item, i) => {
     setTimeout(() => {
-      const el = document.createElement('div');
-      el.className = 'pi-item';
-      el.innerHTML =
-        `<span class="pi-icon"><i data-lucide="${item.icon}"></i></span>` +
-        `<span class="pi-label">${item.label()}</span>` +
-        `<span class="pi-check"><i data-lucide="check-circle-2"></i></span>`;
-      container.appendChild(el);
-      lucide.createIcons();
-
-      if (i === items.length - 1) {
-        setTimeout(() => finishProgress(appName, appUrl, success), 400);
-      }
+      try {
+        const el = document.createElement('div');
+        el.className = 'pi-item';
+        el.innerHTML =
+          `<span class="pi-icon"><i data-lucide="${item.icon}"></i></span>` +
+          `<span class="pi-label">${item.label()}</span>` +
+          `<span class="pi-check"><i data-lucide="check-circle-2"></i></span>`;
+        container.appendChild(el);
+        lucide.createIcons();
+      } catch(e) { /* animação cosmética — ignora erros */ }
     }, i * 150);
   });
 }
@@ -735,9 +702,32 @@ async function runAction() {
         } catch(e) { /* non-fatal */ }
       }
 
+      // Atualiza botão imediatamente — sem depender da animação
+      const urlMatch = (d2.output || '').match(/URL:\s+(https?:\/\/\S+)/);
+      const appUrl   = urlMatch ? urlMatch[1] : '';
+      document.getElementById('prog-spinner').style.display = 'none';
+      document.getElementById('btn-back').style.display = 'none';
+      if (d2.success) {
+        document.getElementById('prog-success').style.display = 'block';
+        if (appUrl) {
+          document.getElementById('prog-app-url').href = appUrl;
+          document.getElementById('prog-app-url-label').textContent = appUrl;
+        } else {
+          document.getElementById('prog-app-url').style.display = 'none';
+        }
+        lucide.createIcons();
+      }
+      btn.textContent = d2.success ? 'Abrir workspace →' : 'Tentar novamente';
+      btn.disabled = false;
+      if (d2.success) btn.onclick = () => { window.location.href = 'workspace.php?app=' + encodeURIComponent(name); };
+      const cancelBtn = document.querySelector('.modal-footer .btn-secondary');
+      if (cancelBtn) { cancelBtn.textContent = 'Ficar no dashboard'; cancelBtn.onclick = () => location.reload(); }
+
+      // Animação de items é cosmética — roda em paralelo
       animateProgress(d2.output || '', name, d2.success);
 
     } catch(e) {
+      document.getElementById('prog-spinner').style.display = 'none';
       document.getElementById('prog-spinner-label').textContent = 'Erro: ' + e.message;
       btn.disabled = false; btn.textContent = 'Tentar novamente';
     }
