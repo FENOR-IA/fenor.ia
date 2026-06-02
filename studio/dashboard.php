@@ -569,6 +569,27 @@ const _piMap = [
   { re: /✓ Permissions/, icon: 'shield-check',  label: () => 'Permissões ajustadas' },
 ];
 
+function finishProgress(appName, appUrl, success) {
+  if (success) {
+    document.getElementById('prog-success').style.display = 'block';
+    if (appUrl) {
+      document.getElementById('prog-app-url').href = appUrl;
+      document.getElementById('prog-app-url-label').textContent = appUrl;
+    } else {
+      document.getElementById('prog-app-url').style.display = 'none';
+    }
+    lucide.createIcons();
+  }
+  document.getElementById('btn-back').style.display = 'none';
+  const btn = document.getElementById('btn-action');
+  btn.textContent = 'Abrir workspace →';
+  btn.disabled = false;
+  btn.onclick = () => { window.location.href = 'workspace.php?app=' + encodeURIComponent(appName); };
+  const cancel = document.querySelector('.modal-footer .btn-secondary');
+  cancel.textContent = 'Ficar no dashboard';
+  cancel.onclick = () => location.reload();
+}
+
 function animateProgress(output, appName, success) {
   const lines = output.split('\n');
   const items = [];
@@ -588,6 +609,11 @@ function animateProgress(output, appName, success) {
   document.getElementById('prog-spinner').style.display = 'none';
   container.style.display = 'block';
 
+  if (items.length === 0) {
+    finishProgress(appName, appUrl, success);
+    return;
+  }
+
   items.forEach((item, i) => {
     setTimeout(() => {
       const el = document.createElement('div');
@@ -600,26 +626,7 @@ function animateProgress(output, appName, success) {
       lucide.createIcons();
 
       if (i === items.length - 1) {
-        setTimeout(() => {
-          if (success) {
-            document.getElementById('prog-success').style.display = 'block';
-            if (appUrl) {
-              document.getElementById('prog-app-url').href = appUrl;
-              document.getElementById('prog-app-url-label').textContent = appUrl;
-            } else {
-              document.getElementById('prog-app-url').style.display = 'none';
-            }
-            lucide.createIcons();
-          }
-          document.getElementById('btn-back').style.display = 'none';
-          const btn = document.getElementById('btn-action');
-          btn.textContent = t('Abrir workspace →', 'Open workspace →');
-          btn.disabled = false;
-          btn.onclick = () => { window.location.href = 'workspace.php?app=' + encodeURIComponent(appName); };
-          const cancel = document.querySelector('.modal-footer .btn-secondary');
-          cancel.textContent = t('Ficar no dashboard', 'Stay on dashboard');
-          cancel.onclick = () => location.reload();
-        }, 400);
+        setTimeout(() => finishProgress(appName, appUrl, success), 400);
       }
     }, i * 150);
   });
