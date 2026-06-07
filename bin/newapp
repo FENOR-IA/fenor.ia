@@ -176,63 +176,180 @@ SQL
 fi
 
 # 6. Memory structure + CLAUDE.md
-mkdir -p "$APP_PATH/memory/"{progress,context,decisions,log}
-cat > "$APP_PATH/memory/INDEX.md" <<MD
-# $APP — Memory Map
+TODAY=$(date '+%Y-%m-%d')
+mkdir -p "$APP_PATH/memory/"{progress,context,decisions,log,kb,agents}
+mkdir -p "$APP_PATH/.claude/commands"
 
-## What it is
-${DESCRIPTION:-Describe the app here}
+cat > "$APP_PATH/memory/INDEX.md" <<MD
+# $APP — Mapa de Memória
+
+## O que é
+${DESCRIPTION:-Descreva o app aqui}
 
 ## Status
-- Created: $(date '+%Y-%m-%d %H:%M')
-- Current environment: DEV
-- URL: https://$APP.dev.$BASE_DOMAIN
-- Database: $DB_SCHEMA
-- Next step: see memory/progress/next.md
+- Criado: $(date '+%Y-%m-%d %H:%M')
+- Ambiente atual: DEV
+- URL: $PROTO://$APP.dev.$BASE_DOMAIN
+- Banco: $DB_SCHEMA
+- Template: $TEMPLATE_SAFE
+
+## Arquivos de memória
+- memory/plan.md           → plano atual (escrito no modo Planejador)
+- memory/spec.md           → especificação técnica detalhada
+- memory/progress/next.md  → próximo passo
+- memory/progress/done.md  → o que já foi feito
+- memory/progress/blockers.md → o que está travado
+- memory/context/produto.md   → o que é o produto, para quem
+- memory/context/usuario.md   → perfil do usuário final
+- memory/context/negocio.md   → modelo comercial e regras
+- memory/kb/domain.md      → regras de negócio específicas
+- memory/kb/gotchas.md     → erros e armadilhas descobertas
+- memory/kb/integrations.md → APIs e serviços configurados
+- memory/log/YYYY-MM-DD.md → diário de cada sessão
+- memory/agents/           → relatórios dos agentes autônomos
 MD
-printf "# Next steps\n"  > "$APP_PATH/memory/progress/next.md"
-printf "# Done\n"        > "$APP_PATH/memory/progress/done.md"
-printf "# Blockers\n"    > "$APP_PATH/memory/progress/blockers.md"
+
+printf "# Plano\n\nAinda não definido. Use o modo Planejador para criar.\n" \
+  > "$APP_PATH/memory/plan.md"
+printf "# Especificação Técnica\n\nAinda não definida.\n" \
+  > "$APP_PATH/memory/spec.md"
+printf "# Próximo passo\n\n" > "$APP_PATH/memory/progress/next.md"
+printf "# Feito\n\n"         > "$APP_PATH/memory/progress/done.md"
+printf "# Bloqueios\n\n"     > "$APP_PATH/memory/progress/blockers.md"
+printf "# Produto\n\n${DESCRIPTION:-}\n" > "$APP_PATH/memory/context/produto.md"
+printf "# Usuário final\n\n" > "$APP_PATH/memory/context/usuario.md"
+printf "# Negócio\n\n"       > "$APP_PATH/memory/context/negocio.md"
+printf "# Regras de negócio\n\n" > "$APP_PATH/memory/kb/domain.md"
+printf "# Armadilhas e erros encontrados\n\n" > "$APP_PATH/memory/kb/gotchas.md"
+printf "# Integrações configuradas\n\n" > "$APP_PATH/memory/kb/integrations.md"
+printf "# $TODAY\n\n## O que foi feito\n\n## Decisões\n\n## Próximo passo\n\n" \
+  > "$APP_PATH/memory/log/$TODAY.md"
+
+# .claude/settings.json — hooks de sessão
+cat > "$APP_PATH/.claude/settings.json" <<JSON
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "true" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "save-memory $APP_SAFE dev"
+          }
+        ]
+      }
+    ]
+  }
+}
+JSON
+
+# Slash commands
+cat > "$APP_PATH/.claude/commands/planner.md" <<MD
+Você está no **modo Planejador**.
+
+Regras:
+- Leia memory/INDEX.md, memory/progress/next.md e memory/context/produto.md
+- Analise o código existente sem modificá-lo
+- Escreva o plano em memory/plan.md
+- Escreva a spec técnica em memory/spec.md
+- Atualize memory/progress/next.md com o primeiro passo do plano
+- NÃO edite código, NÃO faça commits
+
+Após planejar, informe ao usuário: "Plano salvo em memory/plan.md. Abra o modo Executor para implementar."
+MD
+
+cat > "$APP_PATH/.claude/commands/executor.md" <<MD
+Você está no **modo Executor**.
+
+Antes de qualquer ação:
+1. Leia memory/plan.md — execute exatamente o que está planejado
+2. Leia memory/progress/next.md — confirme o passo atual
+3. Leia memory/kb/gotchas.md — evite erros já conhecidos
+
+Durante a execução:
+- Atualize memory/progress/done.md ao concluir cada item
+- Atualize memory/progress/next.md ao avançar
+- Registre decisões em memory/decisions/$(date '+%Y-%m-%d')-decisao.md
+
+Ao terminar a sessão, atualize memory/log/$(date '+%Y-%m-%d').md com o que foi feito.
+MD
+
+cat > "$APP_PATH/.claude/commands/reviewer.md" <<MD
+Você está no **modo Revisor**.
+
+Faça uma revisão completa do código:
+1. Segurança — injeção SQL, XSS, CSRF, senhas expostas
+2. Performance — queries N+1, índices ausentes, loops desnecessários
+3. Qualidade — código duplicado, funções longas, nomenclatura
+4. LGPD — dados pessoais sem proteção adequada
+
+Salve o relatório em memory/agents/review-$(date '+%Y-%m-%d').md.
+NÃO edite código — apenas documente o que encontrou.
+MD
 
 cat > "$APP_PATH/CLAUDE.md" <<MD
 # $APP
 
-## Description
-${DESCRIPTION:-No description}
+## Descrição
+${DESCRIPTION:-Sem descrição}
 
-## Environment
+## Ambiente
 - Env: DEV
-- URL: https://$APP.dev.$BASE_DOMAIN
+- URL: $PROTO://$APP.dev.$BASE_DOMAIN
 - Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN
-- Database: schema \`$DB_SCHEMA\` (PostgreSQL)
-- System user: \`$SYS_USER\`
-- Directory: $APP_PATH
+- Banco: schema \`$DB_SCHEMA\` (PostgreSQL)
+- Usuário do sistema: \`$SYS_USER\`
+- Diretório: $APP_PATH
+- Template: $TEMPLATE_SAFE
 
 ## Stack
 - PHP + Nginx
-- PostgreSQL — isolated schema per environment
-- Cloudflare Tunnel (automatic SSL)
-- Template: $TEMPLATE_SAFE
+- PostgreSQL — schema isolado por ambiente
+- Cloudflare Tunnel (SSL automático)
 
-## Structure
+## Estrutura
 \`\`\`
 $APP/
-├── front/        → roteador PHP, CSS, JS
-├── src/          → Controllers, Auth, Config
-├── views/        → templates PHP
-├── database/     → init.sql (schema do app)
-├── memory/       → contexto entre sessões (INDEX.md, progress/, log/)
-├── CLAUDE.md     → este arquivo
-└── .env          → credenciais (nunca commitar)
+├── front/           → roteador PHP, CSS, JS
+├── src/             → Controllers, Auth, Config
+├── views/           → views PHP
+├── database/        → init.sql (schema do app)
+├── memory/          → contexto entre sessões (leia antes de agir)
+│   ├── INDEX.md     → mapa geral
+│   ├── plan.md      → plano atual
+│   ├── progress/    → next / done / blockers
+│   ├── context/     → produto / usuário / negócio
+│   ├── kb/          → domain / gotchas / integrations
+│   ├── log/         → diário de sessões
+│   └── agents/      → relatórios dos agentes
+├── .claude/
+│   ├── settings.json → hooks automáticos
+│   └── commands/    → /planner /executor /reviewer
+├── CLAUDE.md        → este arquivo
+└── .env             → credenciais (nunca commitar)
 \`\`\`
 
-## Rules
-- Never commit the .env file
-- Never access another app's schema
-- **Never access the fenor database directly** — it contains platform internals (API keys, passwords). Only use schema \`$DB_SCHEMA\` with the credentials in \`.env\`
-- Save progress in memory/log/$(date '+%Y-%m-%d').md at the end of each session
+## Modos de trabalho
+
+Use os slash commands:
+- \`/planner\`  → planeja sem tocar código
+- \`/executor\` → executa o plano
+- \`/reviewer\` → revisa segurança e qualidade
+
+## Regras
+- Nunca commitar o .env
+- Nunca acessar o schema de outro app
+- **Nunca acessar o banco fenor diretamente** — use apenas \`$DB_SCHEMA\`
+- Sempre ler memory/plan.md antes de executar
+- Registrar decisões importantes em memory/decisions/
 MD
-echo "  ✓ Memory and CLAUDE.md initialized"
+echo "  ✓ Memória, CLAUDE.md e slash commands inicializados"
 
 # 7. SSH Deploy Key (only if GitHub repository is configured)
 KEY_DIR="/etc/fenor/keys"

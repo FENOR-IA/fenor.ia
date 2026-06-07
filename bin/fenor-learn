@@ -1,0 +1,44 @@
+#!/bin/bash
+# Fenor — Extrai aprendizados da sessão e atualiza a memória
+# Chamado automaticamente pelo hook Stop do .claude/settings.json
+# Uso: fenor-learn <app> [env]
+
+APP=$1
+ENV=${2:-dev}
+
+source /etc/fenor/.env 2>/dev/null || true
+
+[ -z "$APP" ] && exit 0
+
+APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+APP_PATH="${APPS_PATH:-/var/www}/$ENV/$APP"
+TODAY=$(date '+%Y-%m-%d')
+LOG="$APP_PATH/memory/log/$TODAY.md"
+
+[ -d "$APP_PATH" ] || exit 0
+[ -f "$LOG" ]      || exit 0
+
+ANTHROPIC_API_KEY=$(cat /etc/fenor/ttyd.env 2>/dev/null | grep ANTHROPIC_API_KEY | cut -d= -f2 | tr -d ' ')
+[ -z "$ANTHROPIC_API_KEY" ] && \
+  ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /etc/fenor/.env 2>/dev/null | cut -d= -f2 | tr -d ' ')
+
+[ -z "$ANTHROPIC_API_KEY" ] && exit 0
+
+export ANTHROPIC_API_KEY
+cd "$APP_PATH"
+
+PROMPT="Leia o log da sessão de hoje em memory/log/$TODAY.md. Extraia aprendizados e atualize os seguintes arquivos (apenas se houver conteúdo relevante):
+1. memory/kb/gotchas.md — erros encontrados, bugs resolvidos, armadilhas descobertas
+2. memory/kb/domain.md — regras de negócio identificadas ou confirmadas
+3. memory/kb/integrations.md — integrações configuradas ou testadas
+4. memory/progress/done.md — adicione o que foi concluído hoje
+5. memory/progress/next.md — atualize com o próximo passo mais importante
+
+Seja conciso. Não repita o que já está nos arquivos. Preserve o conteúdo existente."
+
+claude -p "$PROMPT" \
+  --allowedTools "Read,Write,Edit" \
+  --output-format text \
+  2>/dev/null
+
+exit 0

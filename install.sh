@@ -532,12 +532,17 @@ ok "Config salva em /etc/fenor/.env"
 
 step "Baixando scripts CLI..."
 REPO_RAW="https://raw.githubusercontent.com/FENOR-IA/fenor.ia/main"
-run "Download: fenor"         curl -fsSL "$REPO_RAW/bin/fenor"         -o /usr/local/bin/fenor
-run "Download: newapp"        curl -fsSL "$REPO_RAW/bin/newapp"        -o /usr/local/bin/newapp
-run "Download: fenor-promote" curl -fsSL "$REPO_RAW/bin/fenor-promote" -o /usr/local/bin/fenor-promote
-run "Download: fenor-git"     curl -fsSL "$REPO_RAW/bin/fenor-git"     -o /usr/local/bin/fenor-git
-run "Download: save-memory"   curl -fsSL "$REPO_RAW/bin/save-memory"   -o /usr/local/bin/save-memory
-chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote /usr/local/bin/fenor-git /usr/local/bin/save-memory
+run "Download: fenor"          curl -fsSL "$REPO_RAW/bin/fenor"          -o /usr/local/bin/fenor
+run "Download: newapp"         curl -fsSL "$REPO_RAW/bin/newapp"         -o /usr/local/bin/newapp
+run "Download: fenor-promote"  curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin/fenor-promote
+run "Download: fenor-git"      curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
+run "Download: fenor-agent"    curl -fsSL "$REPO_RAW/bin/fenor-agent"    -o /usr/local/bin/fenor-agent
+run "Download: fenor-learn"    curl -fsSL "$REPO_RAW/bin/fenor-learn"    -o /usr/local/bin/fenor-learn
+run "Download: fenor-session"  curl -fsSL "$REPO_RAW/bin/fenor-session"  -o /usr/local/bin/fenor-session
+run "Download: save-memory"    curl -fsSL "$REPO_RAW/bin/save-memory"    -o /usr/local/bin/save-memory
+chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote \
+         /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-learn \
+         /usr/local/bin/fenor-session /usr/local/bin/save-memory
 ok "Scripts instalados"
 
 step "Clonando templates..."

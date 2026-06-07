@@ -1,0 +1,61 @@
+#!/bin/bash
+# Fenor — Abre Claude Code no modo correto (planner / executor / reviewer)
+# Uso: fenor-session <app> <mode> [env]
+# Chamado pelo Studio ao abrir o terminal de um app
+
+APP=$1
+MODE=${2:-executor}
+ENV=${3:-dev}
+
+source /etc/fenor/.env 2>/dev/null || true
+
+[ -z "$APP" ] && { echo "Uso: fenor-session <app> <mode> [env]"; exit 1; }
+
+APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+APP_PATH="${APPS_PATH:-/var/www}/$ENV/$APP"
+
+[ -d "$APP_PATH" ] || { echo "App não encontrado: $APP_PATH"; exit 1; }
+
+ANTHROPIC_API_KEY=$(cat /etc/fenor/ttyd.env 2>/dev/null | grep ANTHROPIC_API_KEY | cut -d= -f2 | tr -d ' ')
+[ -z "$ANTHROPIC_API_KEY" ] && \
+  ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /etc/fenor/.env 2>/dev/null | cut -d= -f2 | tr -d ' ')
+
+export ANTHROPIC_API_KEY
+export APP_SAFE
+
+cd "$APP_PATH"
+
+# Mostra contexto antes de abrir
+echo ""
+echo "  App: $APP ($ENV)"
+echo "  Modo: $MODE"
+echo "  Diretório: $APP_PATH"
+echo ""
+[ -f memory/progress/next.md ] && echo "--- Próximo passo ---" && cat memory/progress/next.md && echo ""
+
+case "$MODE" in
+
+  planner)
+    echo "  Abrindo modo PLANEJADOR — leitura + planejamento, sem editar código"
+    echo ""
+    exec claude \
+      --disallowedTools "Edit,Write,MultiEdit,NotebookEdit,Bash(git commit*),Bash(git push*),Bash(rm *)" \
+      --append-system-prompt "$(cat .claude/commands/planner.md 2>/dev/null || echo 'Modo Planejador: leia o código, escreva o plano em memory/plan.md. Não edite código.')"
+    ;;
+
+  reviewer)
+    echo "  Abrindo modo REVISOR — análise sem editar código"
+    echo ""
+    exec claude \
+      --disallowedTools "Edit,Write,MultiEdit,NotebookEdit,Bash(git commit*),Bash(git push*),Bash(rm *)" \
+      --append-system-prompt "$(cat .claude/commands/reviewer.md 2>/dev/null || echo 'Modo Revisor: analise o código e documente problemas em memory/agents/. Não edite código.')"
+    ;;
+
+  executor|*)
+    echo "  Abrindo modo EXECUTOR"
+    echo ""
+    exec claude \
+      --append-system-prompt "$(cat .claude/commands/executor.md 2>/dev/null || echo 'Modo Executor: leia memory/plan.md antes de agir.')"
+    ;;
+
+esac

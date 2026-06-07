@@ -78,6 +78,21 @@ MD
     echo "  ✓ Memory saved and versioned."
     ;;
 
+  agent)
+    APP=$1; TIPO=$2; ENV=${3:-dev}
+    exec /usr/local/bin/fenor-agent "$APP" "$TIPO" "$ENV"
+    ;;
+
+  session)
+    APP=$1; MODE=${2:-executor}; ENV=${3:-dev}
+    exec /usr/local/bin/fenor-session "$APP" "$MODE" "$ENV"
+    ;;
+
+  learn)
+    APP=$1; ENV=${2:-dev}
+    exec /usr/local/bin/fenor-learn "$APP" "$ENV"
+    ;;
+
   update)
     echo ""
     echo "  Atualizando Fenor..."
@@ -139,10 +154,13 @@ with open('$TEMPLATES_DIR/index.json') as f:
     echo "    fenor status                 List all apps and URLs"
     echo "    fenor logs <app> [env]       Tail app logs"
     echo "    fenor memory <app> [env]     Save session log"
-    echo "    fenor update                 Update Fenor (scripts + studio + templates)"
-    echo "    fenor version                Show installed version"
-    echo "    fenor templates list         List available templates"
-    echo "    fenor templates update       Update templates from GitHub"
+    echo "    fenor agent <app> <tipo>     Roda agente autônomo (review|security|performance|suggestions)"
+    echo "    fenor session <app> <modo>   Abre Claude Code no modo (planner|executor|reviewer)"
+    echo "    fenor learn <app>            Extrai aprendizados da sessão para memória"
+    echo "    fenor update                 Atualiza Fenor (scripts + studio + templates)"
+    echo "    fenor version                Mostra versão instalada"
+    echo "    fenor templates list         Lista templates disponíveis"
+    echo "    fenor templates update       Atualiza templates do GitHub"
     echo ""
     echo "  Examples:"
     echo "    fenor new my-crm"

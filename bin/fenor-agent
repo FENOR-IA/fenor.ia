@@ -1,0 +1,86 @@
+#!/bin/bash
+# Fenor — Agente autônomo headless
+# Uso: fenor-agent <app> <tipo> [env]
+# Tipos: review | security | performance | suggestions
+
+APP=$1
+TIPO=$2
+ENV=${3:-dev}
+
+source /etc/fenor/.env 2>/dev/null || true
+
+if [ -z "$APP" ] || [ -z "$TIPO" ]; then
+  echo ""
+  echo "  Uso: fenor-agent <app> <tipo> [env]"
+  echo ""
+  echo "  Tipos:"
+  echo "    review       — revisão geral do código"
+  echo "    security     — vulnerabilidades de segurança"
+  echo "    performance  — queries lentas, N+1, loops"
+  echo "    suggestions  — melhorias e refactors"
+  echo ""
+  echo "  Exemplos:"
+  echo "    fenor-agent meu-crm review"
+  echo "    fenor-agent meu-crm security dev"
+  echo ""
+  exit 1
+fi
+
+APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+APP_PATH="${APPS_PATH:-/var/www}/$ENV/$APP"
+TODAY=$(date '+%Y-%m-%d')
+REPORT="$APP_PATH/memory/agents/${TIPO}-${TODAY}.md"
+
+[ -d "$APP_PATH" ] || { echo "  ✗ App não encontrado: $APP_PATH"; exit 1; }
+
+ANTHROPIC_API_KEY=$(cat /etc/fenor/ttyd.env 2>/dev/null | grep ANTHROPIC_API_KEY | cut -d= -f2 | tr -d ' ')
+[ -z "$ANTHROPIC_API_KEY" ] && \
+  ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /etc/fenor/.env 2>/dev/null | cut -d= -f2 | tr -d ' ')
+
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+  echo "  ✗ ANTHROPIC_API_KEY não configurada. Configure em Studio → Settings."
+  exit 1
+fi
+
+mkdir -p "$APP_PATH/memory/agents"
+
+case "$TIPO" in
+  review)
+    PROMPT="Você é um revisor de código PHP sênior. Revise todo o código em $APP_PATH (pastas front/, src/, views/). Analise: (1) organização e clareza, (2) duplicação de código, (3) nomenclatura, (4) complexidade desnecessária, (5) funcionalidades faltando conforme memory/plan.md. Salve o relatório em $REPORT com seções: ## Pontos Positivos, ## Problemas Encontrados, ## Sugestões de Melhoria. Não edite código."
+    ;;
+  security)
+    PROMPT="Você é um especialista em segurança PHP. Analise $APP_PATH buscando: SQL injection, XSS, CSRF, senhas expostas, dados sensíveis sem proteção, validação ausente de inputs, permissões de arquivo incorretas, uso inseguro de funções PHP. Salve em $REPORT com: ## Crítico, ## Importante, ## Menor. Para cada item: arquivo, linha, descrição, como corrigir. Não edite código."
+    ;;
+  performance)
+    PROMPT="Você é um especialista em performance PHP/PostgreSQL. Analise $APP_PATH buscando: queries N+1, ausência de índices, loops ineficientes, carregamento desnecessário de dados, falta de paginação, conexões repetidas ao banco. Salve em $REPORT com: ## Crítico, ## Importante, ## Menor. Não edite código."
+    ;;
+  suggestions)
+    PROMPT="Você é um arquiteto PHP. Leia o código em $APP_PATH e o contexto em memory/context/produto.md e memory/plan.md. Sugira: funcionalidades que fariam sentido adicionar, melhorias de UX, integrações úteis, otimizações de fluxo. Salve em $REPORT com: ## Funcionalidades Sugeridas, ## Melhorias de UX, ## Integrações Possíveis. Não edite código."
+    ;;
+  *)
+    echo "  ✗ Tipo desconhecido: $TIPO. Use: review | security | performance | suggestions"
+    exit 1
+    ;;
+esac
+
+echo ""
+echo "  Fenor Agent — $TIPO em $APP ($ENV)"
+echo "  Relatório: $REPORT"
+echo ""
+
+export ANTHROPIC_API_KEY
+cd "$APP_PATH"
+
+claude -p "$PROMPT" \
+  --allowedTools "Read,Bash(find*),Bash(grep*),Bash(ls*),Write" \
+  --output-format text \
+  2>/dev/null
+
+if [ -f "$REPORT" ]; then
+  echo ""
+  echo "  ✓ Relatório salvo: $REPORT"
+  echo "  $(wc -l < "$REPORT") linhas geradas"
+else
+  echo "  ! Relatório não encontrado — verifique se o Claude Code está instalado"
+fi
+echo ""

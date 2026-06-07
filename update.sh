@@ -100,13 +100,17 @@ echo ""
 # [1/3] SCRIPTS CLI
 # ══════════════════════════════════════════════════════
 echo "  ${BOLD}[1/3] Scripts CLI${NC}"
-run "fenor"         curl -fsSL "$REPO_RAW/bin/fenor"         -o /usr/local/bin/fenor
-run "newapp"        curl -fsSL "$REPO_RAW/bin/newapp"        -o /usr/local/bin/newapp
-run "fenor-promote" curl -fsSL "$REPO_RAW/bin/fenor-promote" -o /usr/local/bin/fenor-promote
-run "fenor-git"     curl -fsSL "$REPO_RAW/bin/fenor-git"     -o /usr/local/bin/fenor-git
-run "save-memory"   curl -fsSL "$REPO_RAW/bin/save-memory"   -o /usr/local/bin/save-memory
+run "fenor"          curl -fsSL "$REPO_RAW/bin/fenor"          -o /usr/local/bin/fenor
+run "newapp"         curl -fsSL "$REPO_RAW/bin/newapp"         -o /usr/local/bin/newapp
+run "fenor-promote"  curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin/fenor-promote
+run "fenor-git"      curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
+run "fenor-agent"    curl -fsSL "$REPO_RAW/bin/fenor-agent"    -o /usr/local/bin/fenor-agent
+run "fenor-learn"    curl -fsSL "$REPO_RAW/bin/fenor-learn"    -o /usr/local/bin/fenor-learn
+run "fenor-session"  curl -fsSL "$REPO_RAW/bin/fenor-session"  -o /usr/local/bin/fenor-session
+run "save-memory"    curl -fsSL "$REPO_RAW/bin/save-memory"    -o /usr/local/bin/save-memory
 chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote \
-         /usr/local/bin/fenor-git /usr/local/bin/save-memory
+         /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-learn \
+         /usr/local/bin/fenor-session /usr/local/bin/save-memory
 ok "Scripts atualizados"
 
 # ══════════════════════════════════════════════════════
