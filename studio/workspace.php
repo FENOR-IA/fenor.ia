@@ -109,6 +109,11 @@ if (file_exists($claudeFile)) {
     }
 }
 $rules = $rules ?? '';
+
+// Lê status do plano
+$planFile    = "$appPath/memory/plan.md";
+$planContent = file_exists($planFile) ? file_get_contents($planFile) : '';
+$hasPlan     = $planContent !== '' && strpos($planContent, 'Ainda não definido') === false;
 ?>
 <!DOCTYPE html>
 <html lang="en" data-lang="pt">
@@ -229,6 +234,247 @@ $rules = $rules ?? '';
     @keyframes gpFadeIn { to { opacity: 1; } }
     .btn-sm { padding: .35rem .85rem; font-size: .82rem; border-radius: 7px; }
 
+    /* Mode cards — Planejador / Executor */
+    .mode-card {
+      border: 1.5px solid var(--rule);
+      border-radius: 10px;
+      padding: .75rem;
+      margin-bottom: .5rem;
+      background: #fff;
+      transition: border-color .15s;
+    }
+    .mode-card:not(.mode-locked):hover { border-color: var(--warm); }
+    .mode-card.mode-locked { opacity: .6; background: #fafafa; }
+    .mode-header {
+      display: flex; align-items: center; gap: .5rem;
+      margin-bottom: .55rem;
+    }
+    .mode-icon {
+      width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mode-icon.plan  { background: #eff6ff; }
+    .mode-icon.plan  i { width:14px;height:14px;stroke:#1d4ed8; }
+    .mode-icon.exec  { background: #f0fdf4; }
+    .mode-icon.exec  i { width:14px;height:14px;stroke:#166534; }
+    .mode-icon.exec-off { background: var(--cream); }
+    .mode-icon.exec-off i { width:14px;height:14px;stroke:var(--muted); }
+    .mode-title { font-size:.8rem; font-weight:600; color:var(--ink); line-height:1.2; }
+    .mode-desc  { font-size:.7rem; color:var(--muted); line-height:1.4; margin-top:.1rem; }
+    .mode-badge {
+      margin-left:auto; flex-shrink:0;
+      font-size:.65rem; font-weight:600;
+      padding:.2rem .45rem; border-radius:5px;
+      display:inline-flex; align-items:center; gap:.25rem;
+    }
+    .mode-badge.done { background:#d4edda; color:#166534; }
+    .mode-badge.pend { background:#fff3cd; color:#856404; }
+    .mode-lock-msg {
+      font-size:.75rem; color:#92400e;
+      display:flex; align-items:center; gap:.4rem;
+      padding:.4rem .6rem; background:#fff8f0;
+      border-radius:7px; line-height:1.4;
+    }
+    .plan-preview {
+      margin-top:.5rem; padding:.55rem .7rem;
+      background:var(--cream); border-radius:8px;
+      position:relative; overflow:hidden; max-height:72px;
+    }
+    .plan-preview::after {
+      content:''; position:absolute; bottom:0; left:0; right:0;
+      height:22px; background:linear-gradient(transparent, var(--cream));
+    }
+    .mode-btn {
+      width:100%; padding:.55rem .75rem; border:none; border-radius:8px;
+      font-family:inherit; font-size:.8rem; font-weight:600; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:.5rem;
+      transition:filter .15s;
+    }
+    .mode-btn:hover { filter:brightness(.9); }
+    .mode-btn-plan { background:#1d4ed8; color:#fff; }
+    .mode-btn-exec { background:#166534; color:#fff; }
+
+    /* Tela de seleção de modo */
+    .mode-select-screen {
+      width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+      background:var(--paper);
+    }
+    .mode-select-inner {
+      text-align:center; max-width:560px; width:100%; padding:2rem;
+    }
+    .mode-select-title {
+      display:inline-flex; align-items:center; gap:.5rem;
+      font-size:.95rem; font-weight:600; color:var(--ink);
+      margin-bottom:2rem;
+    }
+    .mode-select-cards {
+      display:grid; grid-template-columns:1fr 1fr; gap:1rem;
+    }
+    .mode-select-card {
+      border:2px solid var(--rule); border-radius:14px;
+      padding:1.75rem 1.25rem; cursor:pointer; background:#fff;
+      text-align:center; font-family:inherit; transition:all .18s;
+      display:flex; flex-direction:column; align-items:center; gap:.6rem;
+    }
+    .mode-select-card.plan:hover  { border-color:#1d4ed8; box-shadow:0 4px 18px rgba(29,78,216,.12); }
+    .mode-select-card.exec:hover  { border-color:#166534; box-shadow:0 4px 18px rgba(22,101,52,.12); }
+    .mode-select-card.locked      { opacity:.55; cursor:default; }
+    .msc-icon {
+      width:52px; height:52px; border-radius:14px;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    }
+    .msc-icon i { width:24px; height:24px; }
+    .msc-icon.plan { background:#eff6ff; }
+    .msc-icon.plan i { stroke:#1d4ed8; }
+    .msc-icon.exec { background:#f0fdf4; }
+    .msc-icon.exec i { stroke:#166534; }
+    .msc-icon.off  { background:var(--cream); }
+    .msc-icon.off  i { stroke:var(--muted); }
+    .msc-label { font-size:1rem; font-weight:700; color:var(--ink); }
+    .msc-desc  { font-size:.78rem; color:var(--muted); line-height:1.6; }
+    .msc-badge {
+      font-size:.7rem; font-weight:600; padding:.25rem .6rem;
+      border-radius:20px; margin-top:.25rem;
+    }
+    .msc-badge.done    { background:#d4edda; color:#166534; }
+    .msc-badge.start   { background:#eff6ff; color:#1d4ed8; }
+    .msc-badge.ready   { background:#f0fdf4; color:#166534; }
+    .msc-badge.blocked { background:var(--cream); color:var(--muted); }
+    .mode-select-card .loading-hint {
+      font-size:.72rem; color:var(--muted); margin-top:.25rem;
+    }
+
+    /* ── Mode switch bar ────────────────────────────── */
+    .mode-switch-bar {
+      display: none; align-items: center; gap: .6rem;
+      padding: .35rem 1rem; border-bottom: 1px solid var(--rule);
+      background: #fafafa; flex-shrink: 0;
+    }
+    .mode-switch-badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      font-size: .78rem; font-weight: 600; color: var(--ink);
+    }
+    .mode-switch-badge i { width: 14px; height: 14px; }
+    .mode-switch-btn {
+      padding: .25rem .65rem; border: 1.5px solid var(--rule);
+      border-radius: 7px; font-family: inherit; font-size: .75rem;
+      font-weight: 600; cursor: pointer; background: #fff; color: var(--ink);
+      display: inline-flex; align-items: center; gap: .3rem;
+      transition: border-color .12s, background .12s;
+    }
+    .mode-switch-btn i { width: 13px; height: 13px; }
+    .mode-switch-btn:not(:disabled):hover { border-color: var(--warm); background: #fff8f5; }
+    .mode-switch-btn:disabled { opacity: .4; cursor: default; }
+
+    /* ── Tab system ─────────────────────────────────── */
+    .ws-terminal { display: flex; flex-direction: column; }
+    .ws-tab-bar {
+      height: 40px; border-bottom: 1px solid var(--rule);
+      display: flex; align-items: center; padding: 0 1rem;
+      background: #fff; gap: .25rem; flex-shrink: 0;
+    }
+    .ws-tab-btn {
+      display: flex; align-items: center; gap: .35rem;
+      padding: .28rem .7rem; border: none; border-radius: 7px;
+      font-family: inherit; font-size: .8rem; font-weight: 500;
+      cursor: pointer; background: none; color: var(--muted);
+      transition: background .12s, color .12s;
+    }
+    .ws-tab-btn:hover { background: var(--cream); color: var(--ink); }
+    .ws-tab-btn.active { background: var(--cream); color: var(--ink); font-weight: 600; }
+    .ws-tab-btn i { width: 14px; height: 14px; }
+    .ws-tab-content {
+      flex: 1; min-height: 0; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Memory panel ────────────────────────────────── */
+    .memory-panel-inner {
+      display: grid; grid-template-columns: 230px 1fr;
+      height: 100%; overflow: hidden;
+    }
+    .memory-tree {
+      border-right: 1px solid var(--rule); background: var(--cream);
+      overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .memory-tree-header {
+      padding: .55rem .75rem; border-bottom: 1px solid var(--rule);
+      display: flex; align-items: center; gap: .35rem;
+      font-size: .68rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .07em; flex-shrink: 0;
+    }
+    .memory-new-file {
+      padding: .45rem .6rem; border-bottom: 1px solid var(--rule);
+      display: flex; gap: .3rem; flex-shrink: 0;
+    }
+    .memory-new-file input {
+      flex: 1; padding: .26rem .45rem;
+      border: 1.5px solid var(--rule); border-radius: 6px;
+      font-size: .72rem; font-family: 'Geist Mono', monospace;
+      color: var(--ink); outline: none; background: #fff;
+    }
+    .memory-new-file input:focus { border-color: var(--warm); }
+    .memory-new-file button {
+      padding: .26rem .6rem; background: var(--warm); color: #fff;
+      border: none; border-radius: 6px;
+      font-size: .88rem; font-weight: 700; cursor: pointer;
+    }
+    #memory-tree-content { flex: 1; padding: .3rem 0; }
+    .tree-file {
+      padding: .3rem .75rem .3rem 1.4rem;
+      font-size: .77rem; font-family: 'Geist Mono', monospace;
+      color: var(--ink); cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transition: background .1s;
+    }
+    .tree-file:hover { background: rgba(0,0,0,.045); }
+    .tree-file.active { background: #fff; font-weight: 600; color: var(--warm); }
+    .tree-folder-header {
+      padding: .3rem .75rem; font-size: .72rem;
+      font-family: 'Geist Mono', monospace; color: var(--muted);
+      cursor: pointer; display: flex; align-items: center; gap: .3rem;
+      font-weight: 600; user-select: none;
+    }
+    .tree-folder-header:hover { background: rgba(0,0,0,.04); }
+    .tree-arrow { font-size: .58rem; width: 10px; display: inline-block; }
+    .tree-children { padding-left: .5rem; }
+    .memory-editor {
+      display: flex; flex-direction: column; background: #fff; overflow: hidden;
+    }
+    .memory-editor-toolbar {
+      padding: .45rem 1rem; border-bottom: 1px solid var(--rule);
+      display: flex; align-items: center; gap: .5rem;
+      flex-shrink: 0; background: #fafafa;
+    }
+    #memory-editor-filename {
+      font-size: .78rem; font-family: 'Geist Mono', monospace;
+      color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #memory-editor-filename.has-file { color: var(--ink); }
+    #memory-save-btn {
+      padding: .28rem .75rem; border: none; border-radius: 7px;
+      font-family: inherit; font-size: .78rem; font-weight: 600;
+      cursor: pointer; background: var(--warm); color: #fff;
+      transition: filter .12s; flex-shrink: 0;
+    }
+    #memory-save-btn:disabled { background: var(--cream); color: var(--muted); cursor: default; }
+    #memory-save-btn:not(:disabled):hover { filter: brightness(.88); }
+    #memory-editor-area {
+      flex: 1; min-height: 0; border: none; outline: none;
+      padding: 1.25rem 1.5rem;
+      font-family: 'Geist Mono', monospace; font-size: .855rem;
+      line-height: 1.8; resize: none; color: var(--ink); background: #fff;
+    }
+    #memory-editor-area:disabled { background: var(--cream); color: var(--muted); }
+    .memory-empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%;
+      color: var(--muted); gap: .6rem; text-align: center; padding: 1.5rem;
+    }
+    .memory-empty-state i { width: 32px; height: 32px; }
+    .memory-empty-state p { font-size: .8rem; line-height: 1.6; }
+
     /* Git action buttons */
     .git-action-btn {
       width: 100%; display: flex; align-items: center; gap: .6rem;
@@ -336,18 +582,54 @@ $rules = $rules ?? '';
 
     <div class="instr-section">
       <h3>
-        <i data-lucide="play-circle" style="width:11px;height:11px;display:inline;"></i>
-        <span data-pt="Como começar" data-en="How to start">Como começar</span>
+        <i data-lucide="workflow" style="width:11px;height:11px;display:inline;"></i>
+        <span>Como trabalhar</span>
       </h3>
-      <p style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem;"
-         data-pt="Digite o comando abaixo no terminal para iniciar o Claude Code neste app:"
-         data-en="Run the command below in the terminal to start Claude Code for this app:">
-        Digite o comando abaixo no terminal para iniciar o Claude Code neste app:
-      </p>
-      <div class="cmd-block" onclick="copyCmd(this, 'claude')">
-        <span>$ claude</span>
-        <span class="copy-hint" data-pt="clique para copiar" data-en="click to copy">clique para copiar</span>
+
+      <!-- Etapa 1: Planejador -->
+      <div class="mode-card">
+        <div class="mode-header">
+          <div class="mode-icon plan"><i data-lucide="brain-circuit"></i></div>
+          <div>
+            <div class="mode-title">1. Planejador</div>
+            <div class="mode-desc">Leia o código, defina o que será feito. Não edita.</div>
+          </div>
+          <?php if ($hasPlan): ?>
+            <span class="mode-badge done">✓ Plano</span>
+          <?php else: ?>
+            <span class="mode-badge pend">Pendente</span>
+          <?php endif; ?>
+        </div>
+        <?php if (!$termUrl): ?>
+          <div class="mode-lock-msg">
+            <i data-lucide="alert-circle" style="width:13px;height:13px;flex-shrink:0;"></i>
+            Terminal não disponível — app não provisionado.
+          </div>
+        <?php endif; ?>
       </div>
+
+      <!-- Etapa 2: Executor -->
+      <div class="mode-card <?= !$hasPlan ? 'mode-locked' : '' ?>">
+        <div class="mode-header">
+          <div class="mode-icon <?= $hasPlan ? 'exec' : 'exec-off' ?>"><i data-lucide="zap"></i></div>
+          <div>
+            <div class="mode-title">2. Executor</div>
+            <div class="mode-desc">Implementa o que foi planejado.</div>
+          </div>
+          <?php if (!$hasPlan): ?>
+            <span class="mode-badge pend" style="display:inline-flex;align-items:center;gap:.25rem;">
+              <i data-lucide="lock" style="width:10px;height:10px;"></i> Bloqueado
+            </span>
+          <?php endif; ?>
+        </div>
+        <?php if (!$hasPlan): ?>
+          <div class="mode-lock-msg">
+            <i data-lucide="alert-circle" style="width:13px;height:13px;flex-shrink:0;"></i>
+            Use o Planejador primeiro para definir o plano.
+          </div>
+        <?php endif; ?>
+      </div>
+
     </div>
 
     <div class="instr-section">
@@ -385,7 +667,7 @@ $rules = $rules ?? '';
               <?php endif; ?>
               <input id="link-repo-input" type="text"
                      placeholder="<?= $ghOwner ? 'nome-do-repo' : 'owner/nome-do-repo' ?>"
-                     style="flex:1;padding:.32rem .55rem;border:1.5px solid var(--rule);border-radius:6px;
+                     style="flex:1;min-width:0;padding:.32rem .55rem;border:1.5px solid var(--rule);border-radius:6px;
                             font-size:.75rem;font-family:'Geist Mono',monospace;background:#fff;
                             color:var(--ink);outline:none;"
                      onfocus="this.style.borderColor='var(--warm)'"
@@ -610,23 +892,143 @@ $rules = $rules ?? '';
 
   </div>
 
-  <!-- Terminal -->
+  <!-- Terminal + Memory -->
   <div class="ws-terminal">
-    <?php if ($termUrl): ?>
-      <iframe src="<?= htmlspecialchars($termUrl) ?>"
-              allow="clipboard-read; clipboard-write"
-              title="Terminal — <?= htmlspecialchars($appName) ?>"></iframe>
-    <?php else: ?>
-      <div class="no-term">
-        <i data-lucide="terminal" style="width:48px;height:48px;color:var(--rule);"></i>
-        <p>
-          <span class="pt-only">Terminal não disponível.<br>Provisione o app primeiro.</span>
-          <span class="en-only">Terminal unavailable.<br>Provision the app first.</span>
-        </p>
-        <a href="dashboard.php" class="btn btn-primary"
-           data-pt="← Voltar" data-en="← Back">← Voltar</a>
+
+    <!-- Tab bar -->
+    <div class="ws-tab-bar">
+      <button class="ws-tab-btn active" data-tab="session" onclick="switchTab('session')">
+        <i data-lucide="terminal"></i>
+        Sessão
+      </button>
+      <button class="ws-tab-btn" data-tab="memory" onclick="switchTab('memory')">
+        <i data-lucide="book-open"></i>
+        Memória
+      </button>
+    </div>
+
+    <!-- Session panel -->
+    <div id="session-panel" class="ws-tab-content">
+      <?php if ($termUrl): ?>
+
+        <!-- Barra de troca de modo (visível quando terminal está aberto) -->
+        <div id="mode-switch-bar" class="mode-switch-bar">
+          <span id="mode-switch-badge" class="mode-switch-badge">
+            <i data-lucide="brain-circuit"></i> Planejador
+          </span>
+          <span style="color:var(--muted);font-size:.72rem;">ativo</span>
+          <div style="margin-left:auto;display:flex;gap:.5rem;">
+            <button id="switch-plan-btn" class="mode-switch-btn" onclick="switchMode('planner')">
+              <i data-lucide="brain-circuit"></i> Planejador
+            </button>
+            <button id="switch-exec-btn" class="mode-switch-btn"
+                    onclick="switchMode('executor')"
+                    <?= !$hasPlan ? 'disabled title="Defina um plano antes de executar"' : '' ?>>
+              <i data-lucide="zap"></i> Executor
+            </button>
+          </div>
+        </div>
+
+        <!-- Tela de seleção de modo (padrão) -->
+        <div id="mode-select-screen" class="mode-select-screen" style="flex:1;">
+          <div class="mode-select-inner">
+            <div class="mode-select-title">
+              <i data-lucide="terminal" style="width:20px;height:20px;stroke:var(--muted);"></i>
+              Como deseja abrir o Claude Code?
+            </div>
+
+            <div class="mode-select-cards">
+
+              <!-- Planejador -->
+              <button class="mode-select-card plan" onclick="openMode('planner')">
+                <div class="msc-icon plan"><i data-lucide="brain-circuit"></i></div>
+                <div class="msc-label">Planejador</div>
+                <div class="msc-desc">Lê o código e define o plano.<br>Não edita nenhum arquivo.</div>
+                <?php if ($hasPlan): ?>
+                  <div class="msc-badge done">✓ Plano definido</div>
+                <?php else: ?>
+                  <div class="msc-badge start">Comece aqui</div>
+                <?php endif; ?>
+              </button>
+
+              <!-- Executor -->
+              <?php if ($hasPlan): ?>
+              <button class="mode-select-card exec" onclick="openMode('executor')">
+                <div class="msc-icon exec"><i data-lucide="zap"></i></div>
+                <div class="msc-label">Executor</div>
+                <div class="msc-desc">Executa o plano definido<br>no modo Planejador.</div>
+                <div class="msc-badge ready">Plano pronto</div>
+              </button>
+              <?php else: ?>
+              <div class="mode-select-card locked">
+                <div class="msc-icon off"><i data-lucide="lock"></i></div>
+                <div class="msc-label" style="color:var(--muted);">Executor</div>
+                <div class="msc-desc" style="color:var(--muted);">Disponível após definir<br>o plano no Planejador.</div>
+                <div class="msc-badge blocked">Aguardando plano</div>
+              </div>
+              <?php endif; ?>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- iframe do terminal (oculto até escolher modo) -->
+        <iframe id="term-iframe" src="" style="display:none;width:100%;height:100%;border:none;flex:1;"
+                allow="clipboard-read; clipboard-write"
+                title="Terminal — <?= htmlspecialchars($appName) ?>"></iframe>
+
+      <?php else: ?>
+        <div class="no-term">
+          <i data-lucide="terminal" style="width:48px;height:48px;color:var(--rule);"></i>
+          <p>
+            <span class="pt-only">Terminal não disponível.<br>Provisione o app primeiro.</span>
+            <span class="en-only">Terminal unavailable.<br>Provision the app first.</span>
+          </p>
+          <a href="dashboard.php" class="btn btn-primary"
+             data-pt="← Voltar" data-en="← Back">← Voltar</a>
+        </div>
+      <?php endif; ?>
+    </div>
+
+    <!-- Memory panel -->
+    <div id="memory-panel" class="ws-tab-content" style="display:none;">
+      <div class="memory-panel-inner">
+
+        <!-- File tree -->
+        <div class="memory-tree">
+          <div class="memory-tree-header">
+            <i data-lucide="folder" style="width:12px;height:12px;"></i>
+            memory/
+          </div>
+          <div class="memory-new-file">
+            <input id="new-file-input" type="text" placeholder="kb/nota.md"
+                   onkeydown="if(event.key==='Enter') createMemoryFile()"
+                   title="Caminho relativo dentro de memory/ (ex: kb/ideia.md)">
+            <button onclick="createMemoryFile()" title="Criar arquivo">+</button>
+          </div>
+          <div id="memory-tree-content">
+            <div class="memory-empty-state">
+              <i data-lucide="loader"></i>
+              <p>Carregando…</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editor -->
+        <div class="memory-editor">
+          <div class="memory-editor-toolbar">
+            <span id="memory-editor-filename">Selecione um arquivo</span>
+            <span id="memory-dirty-indicator" style="font-size:.7rem;color:var(--warm);display:none;">● não salvo</span>
+            <button id="memory-save-btn" onclick="saveMemoryFile()" disabled>Salvar</button>
+          </div>
+          <textarea id="memory-editor-area" disabled
+                    placeholder="Selecione um arquivo na árvore para editar…"
+                    oninput="onEditorInput()"></textarea>
+        </div>
+
       </div>
-    <?php endif; ?>
+    </div>
+
   </div>
 
 </div>
@@ -1123,6 +1525,313 @@ function linkRepo() {
     if (btn) { btn.disabled = false; btn.textContent = t('Vincular', 'Link'); }
   });
 }
+
+const _termUrl  = '<?= addslashes($termUrl) ?>';
+const _hasPlan  = <?= $hasPlan ? 'true' : 'false' ?>;
+let   _currentMode = null;
+
+function _updateModeSwitchBar(mode) {
+  const bar      = document.getElementById('mode-switch-bar');
+  const badge    = document.getElementById('mode-switch-badge');
+  const planBtn  = document.getElementById('switch-plan-btn');
+  const execBtn  = document.getElementById('switch-exec-btn');
+  if (!bar) return;
+
+  bar.style.display = 'flex';
+  lucide.createIcons();
+
+  if (badge) {
+    badge.innerHTML = mode === 'planner'
+      ? '<i data-lucide="brain-circuit"></i> Planejador'
+      : '<i data-lucide="zap"></i> Executor';
+    lucide.createIcons();
+  }
+  // O botão do modo atual fica desabilitado (já está nele)
+  if (planBtn) planBtn.disabled = (mode === 'planner');
+  if (execBtn) execBtn.disabled = (mode === 'executor') || !_hasPlan;
+}
+
+function openMode(mode) {
+  if (!_termUrl) return;
+
+  const screen = document.getElementById('mode-select-screen');
+  const iframe = document.getElementById('term-iframe');
+  const card   = document.querySelector('.mode-select-card.' + (mode === 'planner' ? 'plan' : 'exec'));
+
+  if (card) {
+    card.disabled = true;
+    const hint = document.createElement('div');
+    hint.className = 'loading-hint';
+    hint.textContent = 'Abrindo…';
+    card.appendChild(hint);
+  }
+
+  fetch('api/session.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({app: _appName, mode: mode})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) {
+      if (card) { card.disabled = false; card.querySelector('.loading-hint')?.remove(); }
+      return;
+    }
+    _currentMode = mode;
+    setTimeout(() => {
+      if (screen) screen.style.display = 'none';
+      if (iframe) {
+        iframe.src = _termUrl + '?' + Date.now();
+        iframe.style.display = 'block';
+        setTimeout(() => iframe.focus(), 400);
+      }
+      _updateModeSwitchBar(mode);
+    }, 1400);
+  })
+  .catch(() => {
+    if (card) { card.disabled = false; card.querySelector('.loading-hint')?.remove(); }
+  });
+}
+
+function switchMode(mode) {
+  if (!_termUrl || mode === _currentMode) return;
+
+  const planBtn = document.getElementById('switch-plan-btn');
+  const execBtn = document.getElementById('switch-exec-btn');
+  if (planBtn) planBtn.disabled = true;
+  if (execBtn) execBtn.disabled = true;
+
+  fetch('api/session.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({app: _appName, mode: mode})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) { _updateModeSwitchBar(_currentMode); return; }
+    _currentMode = mode;
+    setTimeout(() => {
+      const iframe = document.getElementById('term-iframe');
+      if (iframe) {
+        iframe.src = _termUrl + '?' + Date.now();
+        setTimeout(() => iframe.focus(), 400);
+      }
+      _updateModeSwitchBar(mode);
+    }, 1400);
+  })
+  .catch(() => _updateModeSwitchBar(_currentMode));
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.ws-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('session-panel').style.display = tab === 'session' ? '' : 'none';
+  document.getElementById('memory-panel').style.display  = tab === 'memory'  ? '' : 'none';
+  if (tab === 'memory' && !_memLoaded) { _memLoaded = true; loadMemoryFiles(); }
+}
+
+// ── Memory panel ─────────────────────────────────────────────────────────
+let _memLoaded   = false;
+let _currentFile = null;
+let _isDirty     = false;
+
+function onEditorInput() {
+  if (!_isDirty) {
+    _isDirty = true;
+    const ind = document.getElementById('memory-dirty-indicator');
+    if (ind) ind.style.display = '';
+  }
+}
+
+function loadMemoryFiles() {
+  fetch('api/memory.php?app=' + encodeURIComponent(_appName))
+    .then(r => r.json())
+    .then(data => {
+      const files = data.files || [];
+      const container = document.getElementById('memory-tree-content');
+      if (!files.length) {
+        container.innerHTML = '<div class="memory-empty-state"><p>Nenhum arquivo de memória ainda.<br>Crie um acima.</p></div>';
+        return;
+      }
+      renderFileTree(files, container);
+    })
+    .catch(() => {
+      const container = document.getElementById('memory-tree-content');
+      container.innerHTML = '<div style="padding:.75rem;font-size:.75rem;color:#c62828;">Erro ao carregar arquivos.</div>';
+    });
+}
+
+function _buildFileTree(files) {
+  const tree = {};
+  files.forEach(path => {
+    const parts = path.split('/');
+    let node = tree;
+    parts.forEach((p, i) => {
+      if (i === parts.length - 1) { node[p] = null; }
+      else { if (!node[p]) node[p] = {}; node = node[p]; }
+    });
+  });
+  return tree;
+}
+
+function _renderTreeNode(name, node, path, container) {
+  if (node === null) {
+    // File
+    const div = document.createElement('div');
+    div.className = 'tree-file';
+    div.textContent = name;
+    div.dataset.path = path;
+    div.title = path;
+    div.onclick = () => openMemoryFile(path, div);
+    container.appendChild(div);
+  } else {
+    // Folder
+    const wrapper = document.createElement('div');
+    const header  = document.createElement('div');
+    header.className = 'tree-folder-header';
+    header.innerHTML = '<span class="tree-arrow">▶</span><i data-lucide="folder" style="width:12px;height:12px;stroke:var(--muted);margin-right:2px;"></i> ' + name + '/';
+    const children = document.createElement('div');
+    children.className = 'tree-children';
+    children.style.display = 'none';
+    header.onclick = () => {
+      const open = children.style.display !== 'none';
+      children.style.display = open ? 'none' : '';
+      header.querySelector('.tree-arrow').textContent = open ? '▶' : '▼';
+      lucide.createIcons();
+    };
+    wrapper.appendChild(header);
+    wrapper.appendChild(children);
+    container.appendChild(wrapper);
+    // Sort: folders first, then files
+    const sorted = Object.entries(node).sort(([a, va], [b, vb]) => {
+      if (va !== null && vb === null) return -1;
+      if (va === null && vb !== null) return 1;
+      return a.localeCompare(b);
+    });
+    sorted.forEach(([k, v]) => _renderTreeNode(k, v, path + '/' + k, children));
+  }
+}
+
+function renderFileTree(files, container) {
+  container.innerHTML = '';
+  const tree = _buildFileTree(files);
+  const sorted = Object.entries(tree).sort(([a, va], [b, vb]) => {
+    if (va !== null && vb === null) return -1;
+    if (va === null && vb !== null) return 1;
+    return a.localeCompare(b);
+  });
+  sorted.forEach(([k, v]) => _renderTreeNode(k, v, k, container));
+  lucide.createIcons();
+}
+
+function openMemoryFile(path, el) {
+  if (_isDirty && _currentFile) {
+    if (!confirm('Alterações não salvas em "' + _currentFile + '". Descartar?')) return;
+  }
+  _currentFile = path;
+  _isDirty = false;
+
+  document.querySelectorAll('.tree-file').forEach(f => f.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  const filenameEl = document.getElementById('memory-editor-filename');
+  const saveBtn    = document.getElementById('memory-save-btn');
+  const editorEl   = document.getElementById('memory-editor-area');
+  const dirtyEl    = document.getElementById('memory-dirty-indicator');
+
+  filenameEl.textContent = path;
+  filenameEl.classList.add('has-file');
+  if (dirtyEl) dirtyEl.style.display = 'none';
+  editorEl.value    = '';
+  editorEl.disabled = true;
+  saveBtn.disabled  = true;
+  saveBtn.textContent = 'Salvar';
+
+  fetch('api/memory.php?app=' + encodeURIComponent(_appName) + '&file=' + encodeURIComponent(path))
+    .then(r => r.json())
+    .then(data => {
+      editorEl.value    = data.content !== undefined ? data.content : '';
+      editorEl.disabled = false;
+      saveBtn.disabled  = false;
+      editorEl.focus();
+    })
+    .catch(() => { editorEl.value = '(erro ao carregar)'; });
+}
+
+function saveMemoryFile() {
+  if (!_currentFile) return;
+  const saveBtn = document.getElementById('memory-save-btn');
+  const dirtyEl = document.getElementById('memory-dirty-indicator');
+  const content = document.getElementById('memory-editor-area').value;
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Salvando…';
+
+  fetch('api/memory.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({app: _appName, file: _currentFile, content})
+  })
+  .then(r => r.json())
+  .then(data => {
+    _isDirty = false;
+    saveBtn.disabled = false;
+    saveBtn.textContent = '✓ Salvo';
+    if (dirtyEl) dirtyEl.style.display = 'none';
+    setTimeout(() => { saveBtn.textContent = 'Salvar'; }, 1800);
+  })
+  .catch(() => {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Erro — tente novamente';
+    setTimeout(() => { saveBtn.textContent = 'Salvar'; }, 2500);
+  });
+}
+
+function createMemoryFile() {
+  const input = document.getElementById('new-file-input');
+  let path = input.value.trim()
+    .replace(/\.\./g, '')
+    .replace(/[^a-zA-Z0-9\-\_\.\/]/g, '')
+    .replace(/^\/+/, '');
+  if (!path) { input.focus(); return; }
+  if (!path.match(/\.[a-z]+$/)) path += '.md';
+
+  fetch('api/memory.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({app: _appName, file: path, content: '# ' + path.split('/').pop().replace(/\.md$/, '') + '\n\n'})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) return;
+    input.value = '';
+    _memLoaded = false;
+    loadMemoryFiles();
+    // After reload, open the new file and expand its folder if nested
+    setTimeout(() => {
+      const el = document.querySelector('[data-path="' + path + '"]');
+      if (el) {
+        // Expand ancestor folders
+        let parent = el.parentElement;
+        while (parent && !parent.classList.contains('memory-tree')) {
+          if (parent.classList.contains('tree-children') && parent.style.display === 'none') {
+            const header = parent.previousElementSibling;
+            if (header) header.click();
+          }
+          parent = parent.parentElement;
+        }
+        openMemoryFile(path, el);
+      }
+    }, 350);
+  });
+}
+
+// Ctrl+S / Cmd+S to save
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's' && _currentFile && document.activeElement.id === 'memory-editor-area') {
+    e.preventDefault();
+    saveMemoryFile();
+  }
+});
 
 window.addEventListener('load', checkGitStatus);
 

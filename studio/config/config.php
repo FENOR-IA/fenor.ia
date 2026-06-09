@@ -1,7 +1,4 @@
 <?php
-// Session lasts 8 hours
-ini_set('session.gc_maxlifetime', 28800);
-session_set_cookie_params(28800);
 require_once __DIR__ . '/db.php';
 
 function config(): array {

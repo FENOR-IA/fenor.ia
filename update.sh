@@ -106,12 +106,39 @@ run "fenor-promote"  curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin
 run "fenor-git"      curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
 run "fenor-agent"    curl -fsSL "$REPO_RAW/bin/fenor-agent"    -o /usr/local/bin/fenor-agent
 run "fenor-learn"    curl -fsSL "$REPO_RAW/bin/fenor-learn"    -o /usr/local/bin/fenor-learn
-run "fenor-session"  curl -fsSL "$REPO_RAW/bin/fenor-session"  -o /usr/local/bin/fenor-session
-run "save-memory"    curl -fsSL "$REPO_RAW/bin/save-memory"    -o /usr/local/bin/save-memory
+run "fenor-session"   curl -fsSL "$REPO_RAW/bin/fenor-session"   -o /usr/local/bin/fenor-session
+run "fenor-terminal"  curl -fsSL "$REPO_RAW/bin/fenor-terminal"  -o /usr/local/bin/fenor-terminal
+run "save-memory"     curl -fsSL "$REPO_RAW/bin/save-memory"     -o /usr/local/bin/save-memory
 chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote \
          /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-learn \
-         /usr/local/bin/fenor-session /usr/local/bin/save-memory
+         /usr/local/bin/fenor-session /usr/local/bin/fenor-terminal /usr/local/bin/save-memory
 ok "Scripts atualizados"
+
+# Migra serviços ttyd existentes para fenor-terminal (necessário para Planejador/Executor no Studio)
+_migrated=0
+for _svc in /etc/systemd/system/ttyd-*-dev.service; do
+  [ -f "$_svc" ] || continue
+  if grep -q "writable bash" "$_svc" || grep -q "writable -a bash" "$_svc"; then
+    _app=$(basename "$_svc" | sed 's/ttyd-//;s/-dev\.service//')
+    sed -i \
+      -e 's|--writable -a bash|--writable /usr/local/bin/fenor-terminal '"$_app"'|' \
+      -e 's|--writable bash|--writable /usr/local/bin/fenor-terminal '"$_app"'|' \
+      "$_svc"
+    _migrated=$(( _migrated + 1 ))
+  fi
+done
+if [ "$_migrated" -gt 0 ]; then
+  systemctl daemon-reload
+  for _svc in /etc/systemd/system/ttyd-*-dev.service; do
+    [ -f "$_svc" ] || continue
+    _unit=$(basename "$_svc")
+    systemctl is-active "${_unit%.service}" &>/dev/null && \
+      systemctl restart "${_unit%.service}" &>/dev/null || true
+  done
+  ok "$_migrated serviço(s) ttyd migrado(s) para fenor-terminal"
+else
+  ok "Serviços ttyd já atualizados"
+fi
 
 # ══════════════════════════════════════════════════════
 # [2/3] STUDIO

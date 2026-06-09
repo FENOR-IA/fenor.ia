@@ -96,7 +96,7 @@ User=$SYS_USER
 WorkingDirectory=$APP_PATH
 Environment=HOME=$APP_PATH
 EnvironmentFile=-/etc/fenor/ttyd.env
-ExecStart=/usr/local/bin/ttyd --port $TERM_PORT --interface 127.0.0.1 --writable bash
+ExecStart=/usr/local/bin/ttyd --port $TERM_PORT --interface 127.0.0.1 --writable /usr/local/bin/fenor-terminal $APP
 Restart=always
 RestartSec=3
 
@@ -240,7 +240,7 @@ cat > "$APP_PATH/.claude/settings.json" <<JSON
         "hooks": [
           {
             "type": "command",
-            "command": "save-memory $APP_SAFE dev"
+            "command": "save-memory $APP_SAFE dev && fenor-save-session $APP_SAFE dev"
           }
         ]
       }
@@ -267,17 +267,20 @@ MD
 cat > "$APP_PATH/.claude/commands/executor.md" <<MD
 Você está no **modo Executor**.
 
-Antes de qualquer ação:
-1. Leia memory/plan.md — execute exatamente o que está planejado
-2. Leia memory/progress/next.md — confirme o passo atual
-3. Leia memory/kb/gotchas.md — evite erros já conhecidos
+**Ao iniciar — faça isso antes de qualquer outra coisa:**
+1. Verifique se existe arquivo em memory/sessions/ — se sim, leia o mais recente e apresente um resumo em 3 linhas: o que foi feito, o que está pendente e qual é o próximo passo
+2. Leia memory/plan.md — execute exatamente o que está planejado
+3. Leia memory/progress/next.md — confirme o passo atual
+4. Leia memory/kb/gotchas.md — evite erros já conhecidos
 
-Durante a execução:
+**Durante a execução:**
 - Atualize memory/progress/done.md ao concluir cada item
 - Atualize memory/progress/next.md ao avançar
 - Registre decisões em memory/decisions/$(date '+%Y-%m-%d')-decisao.md
 
-Ao terminar a sessão, atualize memory/log/$(date '+%Y-%m-%d').md com o que foi feito.
+**Ao encerrar (quando o usuário disser que terminou ou pedir para fechar):**
+- Execute /save-session para salvar o contexto completo da sessão em memory/sessions/
+- Isso garante que a próxima sessão retome exatamente de onde parou
 MD
 
 cat > "$APP_PATH/.claude/commands/reviewer.md" <<MD
@@ -342,12 +345,26 @@ Use os slash commands:
 - \`/executor\` → executa o plano
 - \`/reviewer\` → revisa segurança e qualidade
 
+Comandos ECC disponíveis:
+- \`/code-review\`     → revisa o diff atual (bugs, segurança, simplificação)
+- \`/security-review\` → auditoria de segurança das mudanças
+- \`/checkpoint\`      → salva estado antes de mudanças grandes
+- \`/feature-dev\`     → guia estruturado para nova feature
+
 ## Regras
 - Nunca commitar o .env
 - Nunca acessar o schema de outro app
 - **Nunca acessar o banco fenor diretamente** — use apenas \`$DB_SCHEMA\`
 - Sempre ler memory/plan.md antes de executar
 - Registrar decisões importantes em memory/decisions/
+
+## Qualidade de código (PHP)
+Seguir as regras ECC para PHP (\`~/.claude/rules/ecc/php/\`):
+- PSR-12 e \`declare(strict_types=1)\`
+- Prepared statements para todas as queries dinâmicas
+- \`password_hash()\` / \`password_verify()\` — nunca MD5/SHA1 para senhas
+- Escapar output em templates por padrão
+- Não deixar \`var_dump\`, \`dd()\` ou \`die()\` no código
 MD
 echo "  ✓ Memória, CLAUDE.md e slash commands inicializados"
 

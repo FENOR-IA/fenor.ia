@@ -1,0 +1,67 @@
+#!/bin/bash
+# fenor-save-session — salva contexto da sessão ao encerrar o Claude Code
+# Chamado pelo hook Stop em .claude/settings.json
+# Uso: fenor-save-session <APP_SAFE> <ENV>
+
+APP_SAFE=${1:-unknown}
+ENV=${2:-dev}
+APP=$(echo "$APP_SAFE" | tr '_' '-')
+
+source /etc/fenor/.env 2>/dev/null || true
+APPS_PATH="${APPS_PATH:-/var/www}"
+APP_PATH="$APPS_PATH/$ENV/$APP"
+SESSION_DIR="$APP_PATH/memory/sessions"
+TODAY=$(date '+%Y-%m-%d')
+NOW=$(date '+%H:%M')
+
+[ -d "$APP_PATH" ] || exit 0
+
+mkdir -p "$SESSION_DIR"
+SESSION_FILE="$SESSION_DIR/${TODAY}-session.md"
+
+PLAN=$(cat "$APP_PATH/memory/plan.md" 2>/dev/null | head -30)
+NEXT=$(cat "$APP_PATH/memory/progress/next.md" 2>/dev/null | head -20)
+DONE=$(cat "$APP_PATH/memory/progress/done.md" 2>/dev/null | tail -20)
+BLOCKERS=$(cat "$APP_PATH/memory/progress/blockers.md" 2>/dev/null | head -10)
+GIT_LOG=$(git -C "$APP_PATH" log --oneline -5 2>/dev/null || echo "sem commits")
+GIT_STATUS=$(git -C "$APP_PATH" diff --stat HEAD 2>/dev/null | tail -5)
+
+cat > "$SESSION_FILE" <<MD
+# Sessão: $TODAY — $NOW
+
+**Projeto:** $APP ($ENV)
+
+---
+
+## Plano
+
+$PLAN
+
+---
+
+## Próximo passo
+
+$NEXT
+
+---
+
+## Feito nesta sessão
+
+$DONE
+
+---
+
+## Bloqueios
+
+${BLOCKERS:-Nenhum.}
+
+---
+
+## Git
+
+$GIT_LOG
+
+${GIT_STATUS}
+MD
+
+echo "Sessão salva: $SESSION_FILE"

@@ -1,0 +1,44 @@
+#!/bin/bash
+# fenor-terminal — entrypoint do terminal de cada app
+# Chamado pelo ttyd no lugar de bash.
+# Se /tmp/fenor-session-APP existir, abre no modo definido. Caso contrário, bash normal.
+
+APP=$1
+MODE_FILE="/tmp/fenor-session-${APP}"
+
+# Carrega a API key explicitamente (não depende só do EnvironmentFile do systemd)
+_load_key() {
+    local val
+    val=$(grep -m1 '^ANTHROPIC_API_KEY=' "$1" 2>/dev/null | cut -d= -f2-)
+    [ -n "$val" ] && export ANTHROPIC_API_KEY="$val"
+}
+[ -z "$ANTHROPIC_API_KEY" ] && _load_key /etc/fenor/ttyd.env
+[ -z "$ANTHROPIC_API_KEY" ] && _load_key /etc/fenor/.env
+
+if [ -n "$APP" ] && [ -f "$MODE_FILE" ]; then
+    APP_SAFE=$(echo "$APP" | tr '-' '_')
+    MODE=$(cat "$MODE_FILE" | tr -d '[:space:]')
+    rm -f "$MODE_FILE"
+
+    _do_save() {
+        /usr/local/bin/fenor-save-session "$APP_SAFE" dev 2>/dev/null
+    }
+
+    # Salva a cada 5 minutos enquanto a sessão estiver aberta
+    ( while sleep 300; do /usr/local/bin/fenor-save-session "$APP_SAFE" dev 2>/dev/null; done ) &
+    SAVER_PID=$!
+
+    # Salva ao fechar o browser (SIGHUP) ou matar o processo (SIGTERM)
+    trap '_do_save; kill "$SAVER_PID" 2>/dev/null' SIGTERM SIGHUP EXIT
+
+    # Chama fenor-session como subprocesso (sem exec) para manter trap e saver ativos
+    /usr/local/bin/fenor-session "$APP" "$MODE"
+
+    # Sessão encerrada normalmente: salva, limpa e sai
+    _do_save
+    kill "$SAVER_PID" 2>/dev/null
+    trap - SIGTERM SIGHUP EXIT
+    exit 0
+fi
+
+exec bash
