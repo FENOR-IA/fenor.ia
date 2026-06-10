@@ -534,6 +534,7 @@ step "Baixando scripts CLI..."
 REPO_RAW="https://raw.githubusercontent.com/FENOR-IA/fenor.ia/main"
 run "Download: fenor"          curl -fsSL "$REPO_RAW/bin/fenor"          -o /usr/local/bin/fenor
 run "Download: newapp"         curl -fsSL "$REPO_RAW/bin/newapp"         -o /usr/local/bin/newapp
+run "Download: delete-app"     curl -fsSL "$REPO_RAW/bin/delete-app"     -o /usr/local/bin/delete-app
 run "Download: fenor-promote"  curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin/fenor-promote
 run "Download: fenor-git"      curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
 run "Download: fenor-agent"    curl -fsSL "$REPO_RAW/bin/fenor-agent"    -o /usr/local/bin/fenor-agent
@@ -542,7 +543,7 @@ run "Download: fenor-session"  curl -fsSL "$REPO_RAW/bin/fenor-session"  -o /usr
 run "Download: fenor-terminal"     curl -fsSL "$REPO_RAW/bin/fenor-terminal"     -o /usr/local/bin/fenor-terminal
 run "Download: fenor-save-session" curl -fsSL "$REPO_RAW/bin/fenor-save-session" -o /usr/local/bin/fenor-save-session
 run "Download: save-memory"        curl -fsSL "$REPO_RAW/bin/save-memory"        -o /usr/local/bin/save-memory
-chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/fenor-promote \
+chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/delete-app /usr/local/bin/fenor-promote \
          /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-learn \
          /usr/local/bin/fenor-session /usr/local/bin/fenor-terminal \
          /usr/local/bin/fenor-save-session /usr/local/bin/save-memory
@@ -564,6 +565,7 @@ ok "Git configurado"
 step "Configurando sudoers..."
 cat > /etc/sudoers.d/fenor-scripts << 'SUDOERS'
 www-data ALL=(root) NOPASSWD: /usr/local/bin/newapp
+www-data ALL=(root) NOPASSWD: /usr/local/bin/delete-app
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor-promote
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor-git

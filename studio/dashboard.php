@@ -434,6 +434,27 @@ $_templates = file_exists($_templatesIndex)
         </div>
         <div id="ssh-status" style="margin-top:.5rem;font-size:.8rem;"></div>
       </div>
+
+      <div style="margin-top:1.5rem;padding:1rem;border:1px solid var(--danger);border-radius:8px;background:#fdecea;">
+        <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
+          <i data-lucide="alert-triangle" style="width:14px;height:14px;color:var(--danger);"></i>
+          <strong style="font-size:.8rem;color:var(--danger);" data-pt="Zona de perigo" data-en="Danger zone">Zona de perigo</strong>
+        </div>
+        <p style="font-size:.78rem;color:var(--muted);margin-bottom:.6rem;"
+           data-pt="Remove permanentemente todos os ambientes (DEV/HML/PRD), banco de dados, terminal e arquivos deste app. Esta ação não pode ser desfeita."
+           data-en="Permanently removes all environments (DEV/HML/PRD), database, terminal and files for this app. This action cannot be undone.">
+          Remove permanentemente todos os ambientes (DEV/HML/PRD), banco de dados, terminal e arquivos deste app. Esta ação não pode ser desfeita.
+        </p>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+          <input type="text" id="delete-confirm-input" autocomplete="off"
+                 style="flex:1;padding:.45rem .65rem;border:1px solid var(--danger);border-radius:7px;
+                        font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);color:var(--ink);">
+          <button type="button" class="btn btn-danger btn-xs" id="btn-delete-app" onclick="deleteApp()" disabled
+                  style="white-space:nowrap;"
+                  data-pt="Excluir app" data-en="Delete app">Excluir app</button>
+        </div>
+        <div id="delete-status" style="margin-top:.5rem;font-size:.8rem;"></div>
+      </div>
     </div>
 
     <!-- Output log -->
@@ -481,6 +502,8 @@ const _hasGithubToken = <?= $_hasGithubToken ? 'true' : 'false' ?>;
 const _ghOwner        = '<?= addslashes($_ghOwner) ?>';
 let _mode = 'new', _app = '', _to = '', _step = 1;
 let _ghRepos = [];
+
+function t(pt, en) { return (window.studioLang ? studioLang() : 'pt') === 'en' ? en : pt; }
 
 function selectTemplate(card, name) {
   document.querySelectorAll('#tpl-opts .tpl-card').forEach(c => c.classList.remove('sel'));
@@ -535,6 +558,7 @@ function openModal(mode, app = '', to = '') {
     document.getElementById('btn-action').textContent = t('Salvar', 'Save');
     setGhRepoSelect('edit-github', meta.github_repo || '');
     loadSshKey(app);
+    resetDeleteZone(app);
 
   } else if (mode === 'provision') {
     document.getElementById('modal-title').textContent = t('Provisionar ', 'Provision ') + app;
@@ -602,18 +626,6 @@ function animateProgress(output, appName, success) {
 function closeModal() {
   document.getElementById('modal').classList.remove('open');
   document.getElementById('wiz-progress').style.display = 'none';
-}
-
-function setWizStep(n) {
-  _step = n;
-  const cls = (step, cur) => 'wiz-step ' + (cur > step ? 'done' : cur === step ? 'active' : '');
-  document.getElementById('wp-s1').className = cls(1, n);
-  document.getElementById('wp-s2').className = cls(2, n);
-  document.getElementById('wp-s3').className = cls(3, n);
-  document.getElementById('wp-s4').className = cls(4, n);
-  document.getElementById('wp-line1').className = 'wiz-connector' + (n > 1 ? ' done' : '');
-  document.getElementById('wp-line2').className = 'wiz-connector' + (n > 2 ? ' done' : '');
-  document.getElementById('wp-line3').className = 'wiz-connector' + (n > 3 ? ' done' : '');
 }
 
 function backStep() {
@@ -871,6 +883,48 @@ async function gitPush() {
   const resp = await fetch('api/ssh-key.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: _app, action:'push'}) });
   const data = await resp.json();
   status.innerHTML = data.success ? '<span style="color:#2e7d32;">✓ Push feito!</span>' : `<span style="color:#c62828;">✗ ${data.output}</span>`;
+}
+
+// ── Excluir app ──────────────────────────────────────────────────────────────
+function resetDeleteZone(app) {
+  const input = document.getElementById('delete-confirm-input');
+  const btn   = document.getElementById('btn-delete-app');
+  input.value = '';
+  input.disabled = false;
+  input.placeholder = t(`Digite "${app}" para confirmar`, `Type "${app}" to confirm`);
+  btn.disabled = true;
+  document.getElementById('delete-status').textContent = '';
+  input.oninput = () => { btn.disabled = (input.value !== app); };
+}
+
+async function deleteApp() {
+  const input  = document.getElementById('delete-confirm-input');
+  const btn    = document.getElementById('btn-delete-app');
+  const status = document.getElementById('delete-status');
+  if (input.value !== _app) return;
+
+  btn.disabled = true;
+  input.disabled = true;
+  status.textContent = t('Removendo...', 'Removing...');
+
+  try {
+    const resp = await fetch('api/delete-app.php', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name: _app })
+    });
+    if (resp.status === 401) { location.href = 'login.php'; return; }
+    const data = await resp.json();
+    if (data.success) {
+      status.innerHTML = '<span style="color:#2e7d32;">' + t('✓ App removido.', '✓ App removed.') + '</span>';
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      status.innerHTML = `<span style="color:#c62828;">✗ ${data.error || data.output || t('Erro ao remover.', 'Error removing.')}</span>`;
+      btn.disabled = false; input.disabled = false;
+    }
+  } catch(e) {
+    status.innerHTML = `<span style="color:#c62828;">✗ ${e.message}</span>`;
+    btn.disabled = false; input.disabled = false;
+  }
 }
 
 function copyKey() {

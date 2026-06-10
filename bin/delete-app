@@ -1,0 +1,129 @@
+#!/bin/bash
+# Fenor — remove app (DEV + HML + PRD, o que existir)
+
+APP=$1
+source /etc/fenor/.env
+
+if [ -z "$APP" ]; then
+  echo ""
+  echo "  Usage: delete-app <app-name>"
+  echo ""
+  exit 1
+fi
+
+APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+rm -f /etc/passwd.lock /etc/shadow.lock /etc/group.lock /etc/gshadow.lock 2>/dev/null
+
+echo ""
+echo "  Fenor — Removing: $APP"
+echo "  ────────────────────────────────────"
+
+# DNS — local (/etc/hosts) or Cloudflare
+remove_dns() {
+  local SUBDOMAIN="$1"
+  local FULL="${SUBDOMAIN}.${BASE_DOMAIN}"
+
+  if [ -z "$CF_TOKEN" ] || [ -z "$CF_ZONE_ID" ]; then
+    local FULL_ESC
+    FULL_ESC=$(echo "$FULL" | sed 's/\./\\./g')
+    sed -i "/^127\.0\.0\.1 ${FULL_ESC}\$/d" /etc/hosts 2>/dev/null
+    echo "  ✓ DNS local removido: $FULL"
+  else
+    local REC_ID
+    REC_ID=$(curl -s -X GET \
+      "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=CNAME&name=$FULL" \
+      -H "Authorization: Bearer $CF_TOKEN" \
+      -H "Content-Type: application/json" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [ -n "$REC_ID" ]; then
+      curl -s -X DELETE \
+        "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$REC_ID" \
+        -H "Authorization: Bearer $CF_TOKEN" \
+        -H "Content-Type: application/json" >/dev/null
+      echo "  ✓ DNS removido: $FULL"
+    fi
+  fi
+}
+
+remove_env() {
+  local ENV="$1"
+  local APP_PATH="$APPS_PATH/$ENV/$APP"
+  [ -d "$APP_PATH" ] || return 0
+
+  local SYS_USER="fenor_${APP_SAFE}_${ENV}"
+  local DB_SCHEMA="${APP_SAFE}_${ENV}"
+  local DB_USER="${APP_SAFE}_${ENV}_user"
+
+  echo ""
+  echo "  → Ambiente $ENV"
+
+  # Terminal (ttyd + nginx)
+  systemctl disable --now "ttyd-${APP_SAFE}-${ENV}" &>/dev/null
+  rm -f "/etc/systemd/system/ttyd-${APP_SAFE}-${ENV}.service"
+  systemctl daemon-reload
+  rm -f "/etc/nginx/conf.d/terminal-${APP_SAFE}-${ENV}.conf"
+  echo "  ✓ Terminal removido"
+
+  # Database
+  su - postgres -c "psql -d fenor" &>/dev/null <<SQL
+DROP SCHEMA IF EXISTS $DB_SCHEMA CASCADE;
+DROP ROLE IF EXISTS $DB_USER;
+SQL
+  echo "  ✓ Banco removido (schema $DB_SCHEMA)"
+
+  # System user
+  pkill -u "$SYS_USER" 2>/dev/null
+  sleep 1
+  if userdel "$SYS_USER" 2>/dev/null; then
+    echo "  ✓ Usuário removido: $SYS_USER"
+  else
+    echo "  ⚠ Não foi possível remover o usuário $SYS_USER (verifique manualmente)"
+  fi
+
+  # DNS
+  if [ "$ENV" = "dev" ]; then
+    remove_dns "$APP.dev"; remove_dns "terminal.$APP.dev"
+  elif [ "$ENV" = "hml" ]; then
+    remove_dns "$APP.hml"; remove_dns "terminal.$APP.hml"
+  else
+    remove_dns "$APP"; remove_dns "terminal.$APP"
+  fi
+
+  # Directory
+  rm -rf "$APP_PATH"
+  echo "  ✓ Diretório removido: $APP_PATH"
+}
+
+FOUND=0
+for ENV in dev hml prd; do
+  if [ -d "$APPS_PATH/$ENV/$APP" ]; then
+    FOUND=1
+    remove_env "$ENV"
+  fi
+done
+
+nginx -t &>/dev/null && systemctl reload nginx &>/dev/null
+
+# Deploy key (compartilhada entre os ambientes do app)
+KEY_FILE="/etc/fenor/keys/${APP_SAFE}"
+if [ -f "$KEY_FILE" ]; then
+  rm -f "$KEY_FILE" "$KEY_FILE.pub"
+  echo ""
+  echo "  ✓ Chave SSH removida"
+fi
+
+# Alias "github-$APP" no SSH config do usuário fenor
+FENOR_SSH_CONFIG="/home/fenor/.ssh/config"
+if [ -f "$FENOR_SSH_CONFIG" ] && grep -q "^Host github-$APP\$" "$FENOR_SSH_CONFIG"; then
+  sed -i "/^Host github-$APP\$/,/^StrictHostKeyChecking no$/d" "$FENOR_SSH_CONFIG"
+  echo "  ✓ SSH config (github-$APP) removido"
+fi
+
+echo ""
+echo "  ════════════════════════════════════"
+if [ "$FOUND" = "1" ]; then
+echo "  App removido: $APP"
+else
+echo "  Nenhum ambiente provisionado para '$APP'"
+fi
+echo "  ════════════════════════════════════"
+echo ""
