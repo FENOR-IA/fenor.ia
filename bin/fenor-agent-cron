@@ -1,0 +1,74 @@
+#!/bin/bash
+# Fenor — executa agentes autônomos agendados (review/security/performance/suggestions)
+# Lê o agendamento de cada app em fenor_apps.config->'agent_schedule':
+#   {"enabled": true, "tipos": ["review","security"], "frequency_days": 7}
+# Executa fenor-agent para os tipos vencidos e envia o relatório ao GitHub.
+
+source /etc/fenor/.env 2>/dev/null || true
+
+LOG_DIR="/var/log/fenor"
+mkdir -p "$LOG_DIR"
+NOW=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$NOW] fenor-agent-cron iniciado"
+
+ROWS=$(su - postgres -c "psql -d fenor -t -A -F'|' -c \"
+  WITH a AS (
+    SELECT name, (COALESCE(NULLIF(config, ''), '{}')::jsonb) AS cfg FROM fenor_apps
+  )
+  SELECT name,
+         COALESCE(cfg->'agent_schedule'->>'tipos', '[]'),
+         COALESCE((cfg->'agent_schedule'->>'frequency_days')::int, 7)
+  FROM a
+  WHERE COALESCE((cfg->'agent_schedule'->>'enabled')::boolean, false) = true
+\"" 2>/dev/null)
+
+if [ -z "$ROWS" ]; then
+  echo "  Nenhum app com agendamento de agentes ativo."
+  exit 0
+fi
+
+while IFS='|' read -r APP TIPOS_JSON FREQ; do
+  [ -z "$APP" ] && continue
+
+  APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+  APP_PATH="${APPS_PATH:-/var/www}/dev/$APP"
+  SYS_USER="fenor_${APP_SAFE}_dev"
+
+  if [ ! -d "$APP_PATH" ]; then
+    echo "  ! $APP: diretório não encontrado em $APP_PATH, pulando"
+    continue
+  fi
+
+  TIPOS=$(echo "$TIPOS_JSON" | tr -d '[]"' | tr ',' ' ')
+  RAN_ANY=0
+
+  for TIPO in $TIPOS; do
+    case "$TIPO" in
+      review|security|performance|suggestions) ;;
+      *) continue ;;
+    esac
+
+    LAST_REPORT=$(ls -1 "$APP_PATH/memory/agents/${TIPO}-"*.md 2>/dev/null | sort | tail -1)
+    if [ -n "$LAST_REPORT" ]; then
+      LAST_DATE=$(basename "$LAST_REPORT" | sed -E "s/^${TIPO}-//; s/\.md$//")
+      LAST_EPOCH=$(date -d "$LAST_DATE" +%s 2>/dev/null || echo 0)
+      AGE_DAYS=$(( ($(date +%s) - LAST_EPOCH) / 86400 ))
+      if [ "$AGE_DAYS" -lt "$FREQ" ]; then
+        echo "  · $APP/$TIPO: último relatório há $AGE_DAYS dia(s) (frequência: $FREQ), pulando"
+        continue
+      fi
+    fi
+
+    echo "  → $APP/$TIPO: executando agente..."
+    sudo -u "$SYS_USER" /usr/local/bin/fenor-agent "$APP" "$TIPO" dev >> "$LOG_DIR/agent-cron.log" 2>&1
+    RAN_ANY=1
+  done
+
+  if [ "$RAN_ANY" = "1" ]; then
+    echo "  → $APP: enviando relatórios para o GitHub..."
+    /usr/local/bin/fenor-git "$APP" push "memory: relatórios automáticos $(date '+%Y-%m-%d')" >> "$LOG_DIR/agent-cron.log" 2>&1
+  fi
+done <<< "$ROWS"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] fenor-agent-cron concluído"

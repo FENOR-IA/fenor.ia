@@ -15,8 +15,6 @@ try {
     }
 } catch (Throwable $e) { $dbApps = []; }
 
-$appsJson = json_encode($dbApps, JSON_HEX_TAG | JSON_HEX_AMP);
-
 // Apps in filesystem
 $fsApps = [];
 foreach (loadApps($config['apps_path']) as $app) {
@@ -40,6 +38,28 @@ foreach ($fsApps as $name => $fsApp) {
         $apps[] = array_merge($fsApp, ['description' => '', 'github_repo' => '', 'language' => 'pt', 'status' => 'provisioned']);
     }
 }
+
+// Dados completos por app, para o modal de edição em tela cheia
+$appsData = [];
+foreach ($apps as $a) {
+    $name = $a['name'];
+    $db   = $dbApps[$name] ?? [];
+    $appsData[$name] = [
+        'description'  => $a['description'],
+        'github_repo'  => $a['github_repo'],
+        'language'     => $a['language'],
+        'status'       => $a['status'],
+        'memory_notes' => $db['memory_notes'] ?? '',
+        'created_at'   => $db['created_at'] ?? '',
+        'provisioned'  => ($a['status'] ?? 'registered') === 'provisioned',
+        'envs'         => [
+            'dev' => ['url' => $a['envs']['dev']['url'] ?? '', 'terminal' => $a['envs']['dev']['terminal'] ?? ''],
+            'hml' => ['url' => $a['envs']['hml']['url'] ?? ''],
+            'prd' => ['url' => $a['envs']['prd']['url'] ?? ''],
+        ],
+    ];
+}
+$appsJson = json_encode($appsData, JSON_HEX_TAG | JSON_HEX_AMP);
 
 $total  = count($apps);
 $devCnt = count(array_filter($apps, fn($a) => isset($a['envs']['dev'])));
@@ -125,6 +145,64 @@ $_templates = file_exists($_templatesIndex)
     .prog-success strong { display:block; font-size:.95rem; margin-bottom:.3rem; }
     .prog-success .prog-url { font-size:.8rem; color:var(--warm); text-decoration:none; display:inline-flex; align-items:center; gap:.3rem; }
     .prog-success .prog-url:hover { text-decoration:underline; }
+    .prog-error { text-align:center; padding:1.25rem 0 .5rem; opacity:0; transform:scale(.94); animation: scaleIn .3s .1s ease forwards; }
+    .prog-error .x-circle { width:52px; height:52px; border-radius:50%; background:#fdecea; margin:0 auto .875rem; display:flex; align-items:center; justify-content:center; }
+    .prog-error .x-circle svg { width:26px; height:26px; stroke:var(--danger); }
+    .prog-error strong { display:block; font-size:.95rem; margin-bottom:.3rem; color:var(--danger); }
+    .prog-error pre {
+      text-align:left; background:var(--ink); color:#c9d1d9; padding:.75rem;
+      border-radius:8px; font-family:monospace; font-size:.75rem; max-height:160px;
+      overflow-y:auto; white-space:pre-wrap; margin:.5rem 0 0;
+    }
+
+    /* Modal header / body regions */
+    .modal-header {
+      display:flex; align-items:center; justify-content:space-between; gap:1rem;
+      margin-bottom:1.25rem; flex-wrap:wrap;
+    }
+    .modal-header-title { display:flex; align-items:center; gap:.6rem; min-width:0; }
+    .modal-header h2 { margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .modal-close-btn {
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+      width:32px; height:32px; border-radius:8px; border:1px solid var(--rule);
+      background:#fff; color:var(--muted); cursor:pointer; transition:all .15s;
+    }
+    .modal-close-btn:hover { color:var(--ink); border-color:var(--ink); }
+    .modal-badges { display:flex; align-items:center; gap:.35rem; flex-shrink:0; }
+    .modal-badge {
+      display:inline-flex; align-items:center; font-size:.65rem; font-weight:700;
+      letter-spacing:.04em; padding:.2rem .5rem; border-radius:4px;
+      background:var(--cream); color:var(--muted); text-transform:uppercase;
+    }
+    .modal-badge.provisioned { background:#d4edda; color:var(--success); }
+    .modal-env-links { display:flex; gap:.4rem; flex-wrap:wrap; }
+
+    /* Fullscreen modal (edit) */
+    .modal-bg.fullscreen { padding:0; align-items:stretch; justify-content:stretch; backdrop-filter:none; }
+    .modal-bg.fullscreen .modal {
+      width:100%; height:100%; max-width:none; max-height:none;
+      border-radius:0; box-shadow:none; padding:0;
+      display:flex; flex-direction:column; background:var(--paper);
+    }
+    .modal-bg.fullscreen .modal-header {
+      margin:0; padding:1rem 2rem; background:#fff; border-bottom:1px solid var(--rule); flex-shrink:0;
+    }
+    .modal-bg.fullscreen .modal-body { flex:1; overflow-y:auto; padding:1.75rem 2rem; }
+    .modal-bg.fullscreen .modal-footer { margin:0; flex-shrink:0; padding:1rem 2rem; background:#fff; border-top:1px solid var(--rule); }
+
+    /* Edit layout: grid of cards */
+    .edit-grid {
+      display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));
+      gap:1.25rem; align-items:start;
+    }
+    .edit-card { background:#fff; border:1px solid var(--rule); border-radius:10px; padding:1.25rem; }
+    .edit-card-full { grid-column:1 / -1; }
+    .edit-card h3 {
+      display:flex; align-items:center; gap:.4rem; font-size:.85rem; font-weight:600;
+      margin:0 0 1rem; color:var(--ink);
+    }
+    .edit-card h3 svg { stroke:var(--warm); flex-shrink:0; }
+    .edit-card.danger { border-color:var(--danger); background:#fdecea; }
   </style>
 </head>
 <body>
@@ -216,6 +294,9 @@ $_templates = file_exists($_templatesIndex)
                 <?php endif; ?>
                 <?php if ($ghUrl): ?>
                   <br><a href="<?= htmlspecialchars($ghUrl) ?>" target="_blank" style="font-size:.78rem;color:var(--muted);">GitHub ↗</a>
+                <?php else: ?>
+                  <br><span onclick="openModal('edit','<?= $n ?>')" style="font-size:.78rem;color:var(--warm);cursor:pointer;"
+                    data-pt="Sem repositório GitHub — vincular" data-en="No GitHub repo — link it">Sem repositório GitHub — vincular</span>
                 <?php endif; ?>
               </td>
 
@@ -293,9 +374,18 @@ $_templates = file_exists($_templatesIndex)
 <!-- MODAL -->
 <div class="modal-bg" id="modal">
   <div class="modal">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
-      <h2 id="modal-title" style="margin:0;" data-pt="Novo app" data-en="New app">Novo app</h2>
+    <div class="modal-header">
+      <div class="modal-header-title">
+        <button type="button" class="modal-close-btn" id="modal-close-btn" style="display:none;" onclick="closeModal()" title="Fechar">
+          <i data-lucide="arrow-left" style="width:18px;height:18px;"></i>
+        </button>
+        <h2 id="modal-title">Novo app</h2>
+        <span id="modal-badges" class="modal-badges"></span>
+      </div>
+      <div id="modal-env-links" class="modal-env-links"></div>
     </div>
+
+    <div class="modal-body">
 
     <!-- Wizard progress -->
     <div id="wiz-progress" style="display:none;" class="wiz-progress">
@@ -341,28 +431,11 @@ $_templates = file_exists($_templatesIndex)
         <input type="text" id="app-name" placeholder="meu-app" autofocus>
         <small>Letras minúsculas, números e hífens. Ex: <strong>clinica-central</strong>, <strong>meu-crm</strong></small>
       </div>
-      <?php if ($_hasGithubToken): ?>
-      <div class="field" style="margin-bottom:0;">
-        <label style="display:flex;align-items:center;gap:.4rem;">
-          <i data-lucide="github" style="width:14px;height:14px;"></i>
-          Repositório GitHub <small style="color:var(--muted);font-weight:400;">(opcional)</small>
-        </label>
-        <div style="display:flex;gap:.4rem;align-items:center;">
-          <select id="app-github"
-            style="flex:1;padding:.45rem .65rem;border:1px solid var(--rule);border-radius:8px;
-                   font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);color:var(--ink);">
-            <option value="">— <?= $_ghOwner ? htmlspecialchars($_ghOwner).'/' : '' ?>...</option>
-          </select>
-          <button type="button" onclick="loadGhRepos('app-github')" title="Atualizar"
-            style="padding:.4rem .55rem;border:1px solid var(--rule);border-radius:7px;
-                   background:var(--paper);cursor:pointer;color:var(--muted);flex-shrink:0;">
-            <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i>
-          </button>
-        </div>
-      </div>
-      <?php else: ?>
       <input type="hidden" id="app-github" value="">
-      <?php endif; ?>
+      <p style="font-size:.8rem;color:var(--muted);margin:0;">
+        <span data-pt="O repositório GitHub pode ser vinculado depois, na tela de edição do app."
+              data-en="The GitHub repository can be linked later, from the app's edit screen.">O repositório GitHub pode ser vinculado depois, na tela de edição do app.</span>
+      </p>
     </div>
 
     <!-- Publish / Provision / Edit forms -->
@@ -370,90 +443,191 @@ $_templates = file_exists($_templatesIndex)
     <div id="form-provision" style="display:none;"><p id="provision-msg" style="color:var(--muted);font-size:.875rem;margin-bottom:1rem;"></p></div>
 
     <div id="form-edit" style="display:none;">
-      <div style="background:var(--cream);border-radius:8px;padding:.6rem .875rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;">
-        <i data-lucide="info" style="width:14px;height:14px;stroke:var(--muted);flex-shrink:0;"></i>
-        <span style="font-size:.78rem;color:var(--muted);"
-              data-pt="O nome do app não pode ser alterado após a criação."
-              data-en="The app name cannot be changed after creation.">O nome do app não pode ser alterado após a criação.</span>
-      </div>
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:.4rem;">
-          <i data-lucide="github" style="width:14px;height:14px;"></i>
-          GitHub Repository
-        </label>
-        <?php if ($_hasGithubToken): ?>
-          <div style="display:flex;gap:.4rem;align-items:center;">
-            <select id="edit-github"
-              style="flex:1;padding:.45rem .65rem;border:1px solid var(--rule);border-radius:7px;
-                     font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);
-                     color:var(--ink);">
-              <option value="">— selecionar —</option>
-            </select>
-            <button type="button" onclick="loadGhRepos('edit-github')" title="Refresh list"
-              style="padding:.4rem .55rem;border:1px solid var(--rule);border-radius:7px;
-                     background:var(--paper);cursor:pointer;color:var(--muted);flex-shrink:0;">
-              <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i>
+      <div class="edit-grid">
+
+        <!-- Geral -->
+        <div class="edit-card">
+          <h3><i data-lucide="info" style="width:14px;height:14px;"></i> <span data-pt="Geral" data-en="General">Geral</span></h3>
+          <div class="field" style="margin-bottom:0;">
+            <label data-pt="Descrição" data-en="Description">Descrição</label>
+            <input type="text" id="edit-description" maxlength="200"
+              data-pt-placeholder="Breve descrição do app" data-en-placeholder="Short app description"
+              placeholder="Breve descrição do app">
+            <small data-pt="Exibida na lista de apps do dashboard." data-en="Shown in the dashboard apps list.">Exibida na lista de apps do dashboard.</small>
+          </div>
+          <div style="margin-top:1rem;background:var(--cream);border-radius:8px;padding:.6rem .875rem;display:flex;align-items:center;gap:.5rem;">
+            <i data-lucide="lock" style="width:14px;height:14px;stroke:var(--muted);flex-shrink:0;"></i>
+            <span style="font-size:.78rem;color:var(--muted);"
+                  data-pt="O nome do app não pode ser alterado após a criação."
+                  data-en="The app name cannot be changed after creation.">O nome do app não pode ser alterado após a criação.</span>
+          </div>
+        </div>
+
+        <!-- GitHub & Backup -->
+        <div class="edit-card">
+          <h3><i data-lucide="folder-git-2" style="width:14px;height:14px;"></i> GitHub & Backup</h3>
+          <div class="field">
+            <label data-pt="Repositório" data-en="Repository">Repositório</label>
+            <?php if ($_hasGithubToken): ?>
+              <!-- Linked: shows the repo as a link + "Trocar" button -->
+              <div id="edit-github-linked" style="display:none;align-items:center;justify-content:space-between;gap:.5rem;">
+                <a id="edit-github-link" href="#" target="_blank"
+                  style="display:flex;align-items:center;gap:.4rem;min-width:0;
+                         font-family:'Geist Mono',monospace;font-size:.8rem;color:var(--ink);
+                         text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  <i data-lucide="folder-git-2" style="width:13px;height:13px;flex-shrink:0;stroke:var(--muted);"></i>
+                  <span id="edit-github-link-label" style="overflow:hidden;text-overflow:ellipsis;"></span>
+                  <i data-lucide="external-link" style="width:11px;height:11px;flex-shrink:0;stroke:var(--muted);"></i>
+                </a>
+                <button type="button" class="btn btn-secondary btn-xs" onclick="showGhPicker()" style="flex-shrink:0;">
+                  <span data-pt="Trocar" data-en="Change">Trocar</span>
+                </button>
+              </div>
+              <!-- Not linked yet: just a button -->
+              <button type="button" id="edit-github-link-btn" class="btn btn-secondary btn-xs" onclick="showGhPicker()" style="display:none;">
+                <i data-lucide="folder-git-2" style="width:13px;height:13px;"></i>
+                <span data-pt="Vincular repositório GitHub" data-en="Link GitHub repository">Vincular repositório GitHub</span>
+              </button>
+              <!-- Picker: select + refresh, shown on demand -->
+              <div id="edit-github-picker" style="display:none;gap:.4rem;align-items:center;">
+                <select id="edit-github"
+                  style="flex:1;padding:.45rem .65rem;border:1px solid var(--rule);border-radius:7px;
+                         font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);
+                         color:var(--ink);">
+                  <option value="">— selecionar —</option>
+                </select>
+                <button type="button" onclick="loadGhRepos('edit-github')" title="Refresh list"
+                  style="padding:.4rem .55rem;border:1px solid var(--rule);border-radius:7px;
+                         background:var(--paper);cursor:pointer;color:var(--muted);flex-shrink:0;">
+                  <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i>
+                </button>
+              </div>
+            <?php else: ?>
+              <input type="text" id="edit-github"
+                placeholder="owner/nome-do-repo"
+                style="width:100%;padding:.5rem .75rem;border:1px solid var(--rule);
+                       border-radius:6px;font-family:'Geist Mono',monospace;font-size:.8rem;">
+              <div class="alert alert-warning" style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin:.6rem 0 0;">
+                <span style="display:flex;align-items:center;gap:.5rem;">
+                  <i data-lucide="alert-triangle" style="width:14px;height:14px;flex-shrink:0;"></i>
+                  <span data-pt="GitHub não conectado — busca de repositórios indisponível."
+                        data-en="GitHub not connected — repository lookup unavailable.">GitHub não conectado — busca de repositórios indisponível.</span>
+                </span>
+                <a href="settings.php#github" target="_blank" class="btn btn-secondary btn-xs">
+                  <i data-lucide="external-link" style="width:13px;height:13px;"></i>
+                  <span data-pt="Configurar" data-en="Configure">Configurar</span>
+                </a>
+              </div>
+            <?php endif; ?>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label data-pt="Backup" data-en="Backup">Backup</label>
+            <div style="display:flex;align-items:center;gap:.6rem;">
+              <button type="button" class="btn btn-secondary btn-xs" onclick="downloadApp()">
+                <i data-lucide="download" style="width:13px;height:13px;"></i>
+                <span data-pt="Baixar app (código + memória)" data-en="Download app (code + memory)">Baixar app (código + memória)</span>
+              </button>
+              <span id="download-status" style="font-size:.8rem;"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agentes automáticos -->
+        <div class="edit-card edit-card-full">
+          <h3><i data-lucide="calendar-clock" style="width:14px;height:14px;"></i> <span data-pt="Agentes automáticos" data-en="Automated agents">Agentes automáticos</span></h3>
+          <small style="margin-bottom:.5rem;display:block;"
+                 data-pt="Executa agentes periodicamente e envia o relatório para o GitHub."
+                 data-en="Runs agents periodically and pushes the report to GitHub.">Executa agentes periodicamente e envia o relatório para o GitHub.</small>
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;margin-bottom:.6rem;">
+            <input type="checkbox" id="agent-enabled">
+            <span data-pt="Habilitar execução automática" data-en="Enable automatic execution">Habilitar execução automática</span>
+          </label>
+          <div style="display:flex;flex-wrap:wrap;gap:.25rem 1rem;margin-bottom:.6rem;">
+            <label style="display:flex;align-items:center;gap:.35rem;font-size:.78rem;">
+              <input type="checkbox" class="agent-tipo" value="review">
+              <span data-pt="Revisão de código" data-en="Code review">Revisão de código</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:.35rem;font-size:.78rem;">
+              <input type="checkbox" class="agent-tipo" value="security">
+              <span data-pt="Segurança" data-en="Security">Segurança</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:.35rem;font-size:.78rem;">
+              <input type="checkbox" class="agent-tipo" value="performance">
+              <span data-pt="Performance" data-en="Performance">Performance</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:.35rem;font-size:.78rem;">
+              <input type="checkbox" class="agent-tipo" value="suggestions">
+              <span data-pt="Sugestões" data-en="Suggestions">Sugestões</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:.5rem;">
+            <span style="font-size:.78rem;color:var(--muted);" data-pt="A cada" data-en="Every">A cada</span>
+            <input type="number" id="agent-frequency" min="1" max="90" value="7"
+              style="width:60px;padding:.35rem .5rem;border:1px solid var(--rule);border-radius:6px;
+                     font-family:'Geist Mono',monospace;font-size:.78rem;text-align:center;background:var(--paper);color:var(--ink);">
+            <span style="font-size:.78rem;color:var(--muted);" data-pt="dias" data-en="days">dias</span>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="saveAgentSchedule()" style="margin-left:auto;">
+              <span data-pt="Salvar agendamento" data-en="Save schedule">Salvar agendamento</span>
             </button>
           </div>
-        <?php else: ?>
-          <input type="text" id="edit-github"
-            placeholder="owner/nome-do-repo"
-            style="width:100%;padding:.5rem .75rem;border:1px solid var(--rule);
-                   border-radius:6px;font-family:'Geist Mono',monospace;font-size:.8rem;">
-        <?php endif; ?>
-      </div>
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:.4rem;">
-          <i data-lucide="bot" style="width:14px;height:14px;stroke:var(--warm);"></i>
-          <span data-pt="Instruções para o Claude" data-en="Instructions for Claude">Instruções para o Claude</span>
-        </label>
-        <small style="margin-bottom:.4rem;display:block;"
-               data-pt="Contexto, regras de negócio e decisões técnicas."
-               data-en="Context, business rules and technical decisions.">Contexto, regras de negócio e decisões técnicas.</small>
-        <textarea id="edit-notes" rows="7"
-          data-pt-placeholder="Ex: Usar UUID como PK. Relatórios em PDF. Cliente prefere layout minimalista..."
-          data-en-placeholder="E.g.: Use UUID as PK. PDF reports. Client prefers minimal layout..."
-          placeholder="Ex: Usar UUID como PK. Relatórios em PDF. Cliente prefere layout minimalista..."
-          style="width:100%;padding:.75rem;border:1px solid var(--rule);border-radius:8px;font-family:'Geist Mono',monospace;font-size:.78rem;line-height:1.7;resize:vertical;background:var(--paper);color:var(--ink);"></textarea>
-      </div>
-      <div id="ssh-section" style="display:none;margin-top:1rem;padding:1rem;background:var(--cream);border-radius:8px;border:1px solid var(--rule);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;">
-          <label style="font-size:.8rem;font-weight:600;">Deploy Key (SSH)</label>
-          <div style="display:flex;gap:.5rem;">
-            <button type="button" class="btn btn-secondary btn-xs" onclick="testSshConnection()"
-                    data-pt="Testar" data-en="Test">Testar</button>
-            <button type="button" class="btn btn-secondary btn-xs" onclick="gitPush()">Git push</button>
-          </div>
+          <div id="agent-schedule-status" style="margin-top:.4rem;font-size:.8rem;"></div>
         </div>
-        <textarea id="ssh-pubkey" readonly rows="3"
-          style="width:100%;padding:.5rem .75rem;border:1px solid var(--rule);border-radius:6px;font-family:monospace;font-size:.72rem;background:#fff;resize:none;"></textarea>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;">
-          <small style="color:var(--muted);">GitHub → Settings → Deploy Keys → Add key (write access)</small>
-          <button type="button" class="btn btn-secondary btn-xs" onclick="copyKey()"
-                  data-pt="Copiar" data-en="Copy">Copiar</button>
-        </div>
-        <div id="ssh-status" style="margin-top:.5rem;font-size:.8rem;"></div>
-      </div>
 
-      <div style="margin-top:1.5rem;padding:1rem;border:1px solid var(--danger);border-radius:8px;background:#fdecea;">
-        <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;">
-          <i data-lucide="alert-triangle" style="width:14px;height:14px;color:var(--danger);"></i>
-          <strong style="font-size:.8rem;color:var(--danger);" data-pt="Zona de perigo" data-en="Danger zone">Zona de perigo</strong>
+        <!-- Deploy Key (SSH) -->
+        <div id="ssh-section" class="edit-card edit-card-full" style="display:none;">
+          <h3 style="justify-content:space-between;">
+            <span style="display:flex;align-items:center;gap:.4rem;">
+              <i data-lucide="key-round" style="width:14px;height:14px;"></i>
+              Deploy Key (SSH)
+            </span>
+            <span style="display:flex;gap:.5rem;">
+              <button type="button" class="btn btn-secondary btn-xs" onclick="testSshConnection()"
+                      data-pt="Testar" data-en="Test">Testar</button>
+              <button type="button" class="btn btn-secondary btn-xs" onclick="gitPush()">Git push</button>
+            </span>
+          </h3>
+          <textarea id="ssh-pubkey" readonly rows="3"
+            style="width:100%;padding:.5rem .75rem;border:1px solid var(--rule);border-radius:6px;font-family:monospace;font-size:.72rem;background:var(--paper);resize:none;"></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;">
+            <small style="color:var(--muted);">GitHub → Settings → Deploy Keys → Add key (write access)</small>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="copyKey()"
+                    data-pt="Copiar" data-en="Copy">Copiar</button>
+          </div>
+          <div id="ssh-status" style="margin-top:.5rem;font-size:.8rem;"></div>
         </div>
-        <p style="font-size:.78rem;color:var(--muted);margin-bottom:.6rem;"
-           data-pt="Remove permanentemente todos os ambientes (DEV/HML/PRD), banco de dados, terminal e arquivos deste app. Esta ação não pode ser desfeita."
-           data-en="Permanently removes all environments (DEV/HML/PRD), database, terminal and files for this app. This action cannot be undone.">
-          Remove permanentemente todos os ambientes (DEV/HML/PRD), banco de dados, terminal e arquivos deste app. Esta ação não pode ser desfeita.
-        </p>
-        <div style="display:flex;gap:.5rem;align-items:center;">
-          <input type="text" id="delete-confirm-input" autocomplete="off"
-                 style="flex:1;padding:.45rem .65rem;border:1px solid var(--danger);border-radius:7px;
-                        font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);color:var(--ink);">
-          <button type="button" class="btn btn-danger btn-xs" id="btn-delete-app" onclick="deleteApp()" disabled
-                  style="white-space:nowrap;"
-                  data-pt="Excluir app" data-en="Delete app">Excluir app</button>
+
+        <!-- Instruções para o Claude -->
+        <div class="edit-card edit-card-full">
+          <h3><i data-lucide="bot" style="width:14px;height:14px;"></i> <span data-pt="Instruções para o Claude" data-en="Instructions for Claude">Instruções para o Claude</span></h3>
+          <small style="margin-bottom:.4rem;display:block;"
+                 data-pt="Contexto, regras de negócio e decisões técnicas."
+                 data-en="Context, business rules and technical decisions.">Contexto, regras de negócio e decisões técnicas.</small>
+          <textarea id="edit-notes" rows="10"
+            data-pt-placeholder="Ex: Usar UUID como PK. Relatórios em PDF. Cliente prefere layout minimalista..."
+            data-en-placeholder="E.g.: Use UUID as PK. PDF reports. Client prefers minimal layout..."
+            placeholder="Ex: Usar UUID como PK. Relatórios em PDF. Cliente prefere layout minimalista..."
+            style="width:100%;padding:.75rem;border:1px solid var(--rule);border-radius:8px;font-family:'Geist Mono',monospace;font-size:.78rem;line-height:1.7;resize:vertical;background:var(--paper);color:var(--ink);"></textarea>
         </div>
-        <div id="delete-status" style="margin-top:.5rem;font-size:.8rem;"></div>
+
+        <!-- Zona de perigo -->
+        <div class="edit-card edit-card-full danger">
+          <h3 style="color:var(--danger);"><i data-lucide="alert-triangle" style="width:14px;height:14px;stroke:var(--danger);"></i> <span data-pt="Zona de perigo" data-en="Danger zone">Zona de perigo</span></h3>
+          <p style="font-size:.78rem;color:var(--muted);margin-bottom:.6rem;"
+             data-pt="Remove permanentemente todos os ambientes (DEV/HML/PRD), banco de dados, terminal e arquivos deste app. Esta ação não pode ser desfeita."
+             data-en="Permanently removes all environments (DEV/HML/PRD), database, terminal and files for this app. This action cannot be undone.">
+            Remove permanentemente todos os ambientes (DEV/HML/PRD), banco de dados, terminal e arquivos deste app. Esta ação não pode ser desfeita.
+          </p>
+          <div style="display:flex;gap:.5rem;align-items:center;">
+            <input type="text" id="delete-confirm-input" autocomplete="off"
+                   style="flex:1;padding:.45rem .65rem;border:1px solid var(--danger);border-radius:7px;
+                          font-family:'Geist Mono',monospace;font-size:.78rem;background:var(--paper);color:var(--ink);">
+            <button type="button" class="btn btn-danger btn-xs" id="btn-delete-app" onclick="deleteApp()" disabled
+                    style="white-space:nowrap;"
+                    data-pt="Excluir app" data-en="Delete app">Excluir app</button>
+          </div>
+          <div id="delete-status" style="margin-top:.5rem;font-size:.8rem;"></div>
+        </div>
+
       </div>
     </div>
 
@@ -482,6 +656,13 @@ $_templates = file_exists($_templatesIndex)
           <span id="prog-app-url-label"></span>
         </a>
       </div>
+      <div id="prog-error" style="display:none;" class="prog-error">
+        <div class="x-circle"><i data-lucide="x" style="width:26px;height:26px;"></i></div>
+        <strong data-pt="Falha ao provisionar o app" data-en="Failed to provision app">Falha ao provisionar o app</strong>
+        <pre id="prog-error-output"></pre>
+      </div>
+    </div>
+
     </div>
 
     <div class="modal-footer">
@@ -528,9 +709,40 @@ function setWizStep(n) {
   if (line) line.className = 'wiz-connector' + (n > 1 ? ' done' : '');
 }
 
+// Quick-link buttons (DEV/HML/PRD/Terminal) for the edit modal header
+function buildEnvLinks(app, meta) {
+  const envs = meta.envs || {};
+  const links = [];
+  if (meta.provisioned && envs.dev && envs.dev.url) {
+    links.push(`<a href="${envs.dev.url}" target="_blank" class="env-btn env-btn-dev"><i data-lucide="external-link" style="width:14px;height:14px;"></i><span>DEV</span></a>`);
+  }
+  if (envs.hml && envs.hml.url) {
+    links.push(`<a href="${envs.hml.url}" target="_blank" class="env-btn env-btn-hml"><i data-lucide="external-link" style="width:14px;height:14px;"></i><span>HML</span></a>`);
+  }
+  if (envs.prd && envs.prd.url) {
+    links.push(`<a href="${envs.prd.url}" target="_blank" class="env-btn env-btn-prd"><i data-lucide="external-link" style="width:14px;height:14px;"></i><span>PRD</span></a>`);
+  }
+  if (meta.provisioned && envs.dev && envs.dev.terminal) {
+    links.push(`<a href="workspace.php?app=${encodeURIComponent(app)}" class="env-btn env-btn-term" title="Terminal"><i data-lucide="terminal" style="width:14px;height:14px;"></i></a>`);
+  }
+  return links.join('');
+}
+
+// Status + language badges for the edit modal header
+function buildBadges(meta) {
+  const statusClass = meta.provisioned ? 'modal-badge provisioned' : 'modal-badge';
+  const statusLabel = meta.provisioned ? t('Provisionado', 'Provisioned') : t('Registrado', 'Registered');
+  const lang = (meta.language || 'pt').toUpperCase();
+  return `<span class="${statusClass}">${statusLabel}</span><span class="modal-badge">${lang}</span>`;
+}
+
 function openModal(mode, app = '', to = '') {
   _mode = mode; _app = app; _to = to;
   document.getElementById('modal').classList.add('open');
+  document.getElementById('modal').classList.remove('fullscreen');
+  document.getElementById('modal-close-btn').style.display = 'none';
+  document.getElementById('modal-badges').innerHTML = '';
+  document.getElementById('modal-env-links').innerHTML = '';
   document.getElementById('modal-output').style.display = 'none';
   document.getElementById('modal-log').textContent = '';
   document.getElementById('btn-action').disabled = false;
@@ -552,13 +764,21 @@ function openModal(mode, app = '', to = '') {
 
   } else if (mode === 'edit') {
     const meta = _appsData[app] || {};
+    document.getElementById('modal').classList.add('fullscreen');
+    document.getElementById('modal-close-btn').style.display = '';
     document.getElementById('modal-title').textContent = t('Editar — ', 'Edit — ') + app;
+    document.getElementById('modal-badges').innerHTML = buildBadges(meta);
+    document.getElementById('modal-env-links').innerHTML = buildEnvLinks(app, meta);
     document.getElementById('form-edit').style.display = '';
+    document.getElementById('edit-description').value = meta.description || '';
     document.getElementById('edit-notes').value   = meta.memory_notes || '';
     document.getElementById('btn-action').textContent = t('Salvar', 'Save');
     setGhRepoSelect('edit-github', meta.github_repo || '');
+    setupGhRepoView(meta.github_repo || '');
     loadSshKey(app);
+    loadAgentSchedule(app);
     resetDeleteZone(app);
+    setTimeout(() => lucide.createIcons(), 30);
 
   } else if (mode === 'provision') {
     document.getElementById('modal-title').textContent = t('Provisionar ', 'Provision ') + app;
@@ -660,7 +880,6 @@ async function runAction() {
       document.getElementById('btn-back').style.display = '';
       btn.disabled = false;
       setWizStep(2);
-      if (_hasGithubToken) loadGhRepos('app-github');
       setTimeout(() => { document.getElementById('app-name').focus(); lucide.createIcons(); }, 50);
       return;
     }
@@ -675,6 +894,7 @@ async function runAction() {
     document.getElementById('prog-spinner').style.display = 'flex';
     document.getElementById('progress-items').style.display = 'none';
     document.getElementById('prog-success').style.display = 'none';
+    document.getElementById('prog-error').style.display = 'none';
     document.getElementById('prog-spinner-label').textContent = 'Registrando app...';
     btn.textContent = 'Criando...';
     setTimeout(() => lucide.createIcons(), 30);
@@ -682,15 +902,16 @@ async function runAction() {
     try {
       const r1 = await fetch('api/newapp.php', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          name, description: name, template,
-          github_repo: document.getElementById('app-github').value.trim()
-        })
+        body: JSON.stringify({ name, description: name, template, github_repo: '' })
       });
       if (r1.status === 401) { location.href = 'login.php'; return; }
       const d1 = await r1.json();
       if (!d1.success) {
-        document.getElementById('prog-spinner-label').textContent = 'Erro: ' + (d1.error || 'falha ao registrar.');
+        document.getElementById('prog-spinner').style.display = 'none';
+        document.getElementById('btn-back').style.display = 'none';
+        document.getElementById('prog-error-output').textContent = d1.error || 'Falha ao registrar o app.';
+        document.getElementById('prog-error').style.display = 'block';
+        lucide.createIcons();
         btn.disabled = false; btn.textContent = 'Tentar novamente'; return;
       }
 
@@ -702,17 +923,6 @@ async function runAction() {
       });
       if (r2.status === 401) { location.href = 'login.php'; return; }
       const d2 = await r2.json();
-
-      const ghRepo = document.getElementById('app-github').value.trim();
-      if (d2.success && ghRepo && _hasGithubToken) {
-        document.getElementById('prog-spinner-label').textContent = 'Configurando GitHub...';
-        try {
-          await fetch('api/git.php', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({name, action: 'set-remote', repo: ghRepo})
-          });
-        } catch(e) { /* non-fatal */ }
-      }
 
       // Atualiza botão imediatamente — sem depender da animação
       const urlMatch = (d2.output || '').match(/URL:\s+(https?:\/\/\S+)/);
@@ -728,6 +938,12 @@ async function runAction() {
           document.getElementById('prog-app-url').style.display = 'none';
         }
         lucide.createIcons();
+        // Animação de items é cosmética — roda em paralelo
+        animateProgress(d2.output || '', name, d2.success);
+      } else {
+        document.getElementById('prog-error-output').textContent = d2.output || d2.error || 'Falha ao provisionar o app.';
+        document.getElementById('prog-error').style.display = 'block';
+        lucide.createIcons();
       }
       btn.textContent = d2.success ? 'Abrir workspace →' : 'Tentar novamente';
       btn.disabled = false;
@@ -735,19 +951,24 @@ async function runAction() {
       const cancelBtn = document.querySelector('.modal-footer .btn-secondary');
       if (cancelBtn) { cancelBtn.textContent = 'Ficar no dashboard'; cancelBtn.onclick = () => location.reload(); }
 
-      // Animação de items é cosmética — roda em paralelo
-      animateProgress(d2.output || '', name, d2.success);
-
     } catch(e) {
       document.getElementById('prog-spinner').style.display = 'none';
-      document.getElementById('prog-spinner-label').textContent = 'Erro: ' + e.message;
+      document.getElementById('btn-back').style.display = 'none';
+      document.getElementById('prog-error-output').textContent = e.message;
+      document.getElementById('prog-error').style.display = 'block';
+      lucide.createIcons();
       btn.disabled = false; btn.textContent = 'Tentar novamente';
     }
     return;
 
   } else if (_mode === 'edit') {
     endpoint = 'api/update-app.php';
-    body = { name: _app, github_repo: document.getElementById('edit-github').value.trim(), memory_notes: document.getElementById('edit-notes').value.trim() };
+    body = {
+      name: _app,
+      description: document.getElementById('edit-description').value.trim(),
+      github_repo: document.getElementById('edit-github').value.trim(),
+      memory_notes: document.getElementById('edit-notes').value.trim()
+    };
     btn.textContent = t('Salvando...', 'Saving...');
   } else if (_mode === 'provision') {
     endpoint = 'api/provision.php';
@@ -837,6 +1058,36 @@ function ghNormalizeRepo(raw) {
   return raw;
 }
 
+// Toggle the edit-modal repo field from its current view to the picker (select + refresh)
+function showGhPicker() {
+  const linked = document.getElementById('edit-github-linked');
+  const btn    = document.getElementById('edit-github-link-btn');
+  const picker = document.getElementById('edit-github-picker');
+  if (linked) linked.style.display = 'none';
+  if (btn)    btn.style.display    = 'none';
+  if (picker) picker.style.display = 'flex';
+}
+
+// Show "linked" (repo link + Trocar) or "not linked" (Vincular button) view
+function setupGhRepoView(rawValue) {
+  const linked = document.getElementById('edit-github-linked');
+  const btn    = document.getElementById('edit-github-link-btn');
+  const picker = document.getElementById('edit-github-picker');
+  if (!linked || !btn || !picker) return; // GitHub not connected — manual input only
+
+  picker.style.display = 'none';
+  const normalized = ghNormalizeRepo(rawValue);
+  if (normalized) {
+    document.getElementById('edit-github-link').href = 'https://github.com/' + normalized;
+    document.getElementById('edit-github-link-label').textContent = normalized;
+    linked.style.display = 'flex';
+    btn.style.display    = 'none';
+  } else {
+    linked.style.display = 'none';
+    btn.style.display    = 'inline-flex';
+  }
+}
+
 // Open a select + pre-select the current value (loads list if needed)
 async function setGhRepoSelect(selectId, rawValue) {
   const el = document.getElementById(selectId);
@@ -877,12 +1128,85 @@ async function testSshConnection() {
   status.innerHTML = data.success ? '<span style="color:#2e7d32;">✓ Conectado!</span>' : `<span style="color:#c62828;">✗ ${data.output}</span>`;
 }
 
+async function downloadApp() {
+  const status = document.getElementById('download-status');
+  status.textContent = t('Gerando pacote...', 'Generating package...');
+  try {
+    const resp = await fetch('api/download-app.php?name=' + encodeURIComponent(_app));
+    if (resp.status === 401) { location.href = 'login.php'; return; }
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      status.innerHTML = `<span style="color:#c62828;">✗ ${data.error || t('Erro ao gerar pacote', 'Error generating package')}</span>`;
+      return;
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : (_app + '.tar.gz');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    status.textContent = '';
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c62828;">✗ ${e.message}</span>`;
+  }
+}
+
 async function gitPush() {
   const status = document.getElementById('ssh-status');
-  status.textContent = 'Enviando...';
-  const resp = await fetch('api/ssh-key.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: _app, action:'push'}) });
+  status.textContent = t('Enviando...', 'Pushing...');
+  const resp = await fetch('api/git.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: _app, action:'push'}) });
   const data = await resp.json();
-  status.innerHTML = data.success ? '<span style="color:#2e7d32;">✓ Push feito!</span>' : `<span style="color:#c62828;">✗ ${data.output}</span>`;
+  status.innerHTML = data.success
+    ? '<span style="color:#2e7d32;">✓ ' + t('Push feito!', 'Pushed!') + '</span>'
+    : `<span style="color:#c62828;">✗ ${(data.output || data.error || '').trim()}</span>`;
+}
+
+// ── Agendamento de agentes ───────────────────────────────────────────────────
+async function loadAgentSchedule(app) {
+  document.getElementById('agent-enabled').checked = false;
+  document.querySelectorAll('.agent-tipo').forEach(cb => cb.checked = false);
+  document.getElementById('agent-frequency').value = 7;
+  document.getElementById('agent-schedule-status').textContent = '';
+  try {
+    const resp = await fetch('api/agent-schedule.php?name=' + encodeURIComponent(app));
+    if (resp.status === 401) { location.href = 'login.php'; return; }
+    const data = await resp.json();
+    if (!data.success) return;
+    const sched = data.schedule || {};
+    document.getElementById('agent-enabled').checked = !!sched.enabled;
+    document.getElementById('agent-frequency').value = sched.frequency_days || 7;
+    (sched.tipos || []).forEach(tipo => {
+      const cb = document.querySelector('.agent-tipo[value="' + tipo + '"]');
+      if (cb) cb.checked = true;
+    });
+  } catch (e) { /* silencioso — mantém defaults */ }
+}
+
+async function saveAgentSchedule() {
+  const status = document.getElementById('agent-schedule-status');
+  status.textContent = t('Salvando...', 'Saving...');
+  const tipos = Array.from(document.querySelectorAll('.agent-tipo:checked')).map(cb => cb.value);
+  const body = {
+    name: _app,
+    enabled: document.getElementById('agent-enabled').checked,
+    tipos,
+    frequency_days: parseInt(document.getElementById('agent-frequency').value, 10) || 7
+  };
+  try {
+    const resp = await fetch('api/agent-schedule.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (resp.status === 401) { location.href = 'login.php'; return; }
+    const data = await resp.json();
+    status.innerHTML = data.success
+      ? '<span style="color:#2e7d32;">✓ ' + t('Agendamento salvo!', 'Schedule saved!') + '</span>'
+      : `<span style="color:#c62828;">✗ ${data.error || t('Erro ao salvar', 'Error saving')}</span>`;
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c62828;">✗ ${e.message}</span>`;
+  }
 }
 
 // ── Excluir app ──────────────────────────────────────────────────────────────
@@ -948,6 +1272,10 @@ lucide.createIcons();
 
 const _origOpen = openModal;
 window.openModal = function(...args) { _origOpen(...args); setTimeout(() => lucide.createIcons(), 50); };
+
+// Auto-open the edit modal when arriving via ?edit=<app>
+const _editApp = new URLSearchParams(window.location.search).get('edit');
+if (_editApp && _appsData[_editApp]) openModal('edit', _editApp);
 </script>
 </body>
 </html>

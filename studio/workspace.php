@@ -66,9 +66,6 @@ $hasDeployKey  = file_exists($deployKeyFile);
 $studioSettings = fenorSettings();
 $hasGithubToken = !empty(trim($studioSettings['GITHUB_TOKEN'] ?? ''));
 $authMethod     = $studioSettings['GITHUB_AUTH_METHOD'] ?? '';
-$githubUser     = $studioSettings['GITHUB_USER']        ?? '';
-$githubOrg      = $studioSettings['GITHUB_ORG']         ?? '';
-$ghOwner        = $githubOrg ?: $githubUser;
 // PAT uses HTTPS — no SSH deploy key needed
 $isPatAuth      = $hasGithubToken && $authMethod === 'pat';
 // Can push/pull: either has a deploy key (SSH) or uses PAT (HTTPS)
@@ -509,6 +506,12 @@ $hasPlan     = $planContent !== '' && strpos($planContent, 'Ainda não definido'
     <span class="sep">|</span>
     <i data-lucide="box" style="width:15px;height:15px;color:var(--warm);"></i>
     <strong><?= htmlspecialchars($appName) ?></strong>
+    <?php if (!$hasGithub): ?>
+    <span class="sep">|</span>
+    <a href="dashboard.php?edit=<?= urlencode($appName) ?>" onclick="interceptExit(event, 'dashboard.php?edit=<?= urlencode($appName) ?>')"
+      style="font-size:.78rem;color:var(--warm);text-decoration:none;"
+      data-pt="Sem repositório GitHub — vincular" data-en="No GitHub repo — link it">Sem repositório GitHub — vincular</a>
+    <?php endif; ?>
     <span class="spacer"></span>
     <?php if ($hasGithub): ?>
     <button onclick="openSaveModal()" class="btn btn-secondary btn-xs"
@@ -632,7 +635,7 @@ $hasPlan     = $planContent !== '' && strpos($planContent, 'Ainda não definido'
 
     </div>
 
-    <div class="instr-section">
+    <div class="instr-section" id="vcs-section">
       <h3>
         <i data-lucide="git-branch" style="width:11px;height:11px;display:inline;"></i>
         <span data-pt="Controle de versão" data-en="Version control">Controle de versão</span>
@@ -646,41 +649,20 @@ $hasPlan     = $planContent !== '' && strpos($planContent, 'Ainda não definido'
       <?php elseif (!$hasGithub): ?>
         <!-- Git initialized but no remote yet -->
         <?php if ($hasGithubToken): ?>
-          <!-- Quick link: just enter the repo name -->
-          <div style="background:#f8f9fa;border:1px solid var(--rule);border-radius:9px;
+          <div style="background:#f8f9fa;border:1px solid var(--rule);border-radius:8px;
                       padding:.65rem .75rem;font-size:.75rem;color:var(--muted);line-height:1.6;">
-            <strong style="color:var(--ink);display:block;margin-bottom:.3rem;"
-                    data-pt="Vincular ao GitHub" data-en="Link to GitHub">Vincular ao GitHub</strong>
-            <?php if ($ghOwner): ?>
-              <p style="font-size:.72rem;color:var(--muted);margin-bottom:.45rem;">
-                <span data-pt="Repositório em " data-en="Repository under ">Repositório em </span>
-                <strong style="color:var(--ink);"><?= htmlspecialchars($ghOwner) ?></strong>
-                &nbsp;·&nbsp;
-                <a href="settings.php" style="color:var(--warm);text-decoration:none;font-size:.7rem;"
-                   data-pt="alterar" data-en="change">alterar</a>
-              </p>
-            <?php endif; ?>
-            <div style="display:flex;align-items:center;gap:.35rem;">
-              <?php if ($ghOwner): ?>
-                <span style="font-size:.72rem;color:var(--muted);white-space:nowrap;
-                             font-family:'Geist Mono',monospace;"><?= htmlspecialchars($ghOwner) ?>/</span>
-              <?php endif; ?>
-              <input id="link-repo-input" type="text"
-                     placeholder="<?= $ghOwner ? 'nome-do-repo' : 'owner/nome-do-repo' ?>"
-                     style="flex:1;min-width:0;padding:.32rem .55rem;border:1.5px solid var(--rule);border-radius:6px;
-                            font-size:.75rem;font-family:'Geist Mono',monospace;background:#fff;
-                            color:var(--ink);outline:none;"
-                     onfocus="this.style.borderColor='var(--warm)'"
-                     onblur="this.style.borderColor='var(--rule)'"
-                     onkeydown="if(event.key==='Enter') linkRepo()">
-              <button id="link-repo-btn" onclick="linkRepo()"
-                style="padding:.32rem .65rem;background:var(--warm);color:#fff;border:none;
-                       border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;
-                       white-space:nowrap;flex-shrink:0;"
-                data-pt="Vincular" data-en="Link">Vincular</button>
-            </div>
-            <p id="link-repo-err"
-               style="display:none;color:#c62828;font-size:.7rem;margin-top:.35rem;"></p>
+            <strong style="color:var(--ink);display:block;margin-bottom:.2rem;"
+                    data-pt="Sem repositório vinculado" data-en="No repository linked">Sem repositório vinculado</strong>
+            <span class="pt-only">Vincule um repositório GitHub na tela de edição do app.</span>
+            <span class="en-only">Link a GitHub repository from the app's edit screen.</span>
+            <br>
+            <a href="dashboard.php?edit=<?= urlencode($appName) ?>"
+               onclick="interceptExit(event, 'dashboard.php?edit=<?= urlencode($appName) ?>')"
+               style="color:var(--warm);font-weight:500;text-decoration:none;
+                      margin-top:.4rem;display:inline-block;"
+               data-pt="Vincular repositório →" data-en="Link repository →">
+              Vincular repositório →
+            </a>
           </div>
         <?php else: ?>
           <div style="background:#f8f9fa;border:1px solid var(--rule);border-radius:8px;
@@ -1491,38 +1473,6 @@ function autoAddDeployKey() {
   .catch(() => {
     addItem(t('Erro de conexão.', 'Connection error.'), 'err');
     if (btns) btns.style.display = '';
-  });
-}
-
-// ── Link repo by name (no full URL needed when PAT is configured) ─────────
-function linkRepo() {
-  const input = document.getElementById('link-repo-input');
-  const btn   = document.getElementById('link-repo-btn');
-  const err   = document.getElementById('link-repo-err');
-  const repo  = input ? input.value.trim() : '';
-
-  if (!repo) { if (input) input.focus(); return; }
-  if (btn) { btn.disabled = true; btn.textContent = t('Vinculando...', 'Linking...'); }
-  if (err) { err.style.display = 'none'; }
-
-  fetch('api/git.php', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: _appName, action: 'set-remote', repo: repo})
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      window.location.reload();
-    } else {
-      const msg = data.error || t('Falha ao vincular repositório.', 'Failed to link repository.');
-      if (err) { err.textContent = msg; err.style.display = ''; }
-      if (btn) { btn.disabled = false; btn.textContent = t('Vincular', 'Link'); }
-    }
-  })
-  .catch(() => {
-    if (err) { err.textContent = t('Erro de conexão.', 'Connection error.'); err.style.display = ''; }
-    if (btn) { btn.disabled = false; btn.textContent = t('Vincular', 'Link'); }
   });
 }
 

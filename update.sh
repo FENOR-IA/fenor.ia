@@ -106,12 +106,15 @@ run "delete-app"     curl -fsSL "$REPO_RAW/bin/delete-app"     -o /usr/local/bin
 run "fenor-promote"  curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin/fenor-promote
 run "fenor-git"      curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
 run "fenor-agent"    curl -fsSL "$REPO_RAW/bin/fenor-agent"    -o /usr/local/bin/fenor-agent
+run "fenor-agent-cron" curl -fsSL "$REPO_RAW/bin/fenor-agent-cron" -o /usr/local/bin/fenor-agent-cron
+run "export-app"     curl -fsSL "$REPO_RAW/bin/export-app"     -o /usr/local/bin/export-app
 run "fenor-learn"    curl -fsSL "$REPO_RAW/bin/fenor-learn"    -o /usr/local/bin/fenor-learn
 run "fenor-session"   curl -fsSL "$REPO_RAW/bin/fenor-session"   -o /usr/local/bin/fenor-session
 run "fenor-terminal"  curl -fsSL "$REPO_RAW/bin/fenor-terminal"  -o /usr/local/bin/fenor-terminal
 run "save-memory"     curl -fsSL "$REPO_RAW/bin/save-memory"     -o /usr/local/bin/save-memory
 chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/delete-app /usr/local/bin/fenor-promote \
-         /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-learn \
+         /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-agent-cron /usr/local/bin/export-app \
+         /usr/local/bin/fenor-learn \
          /usr/local/bin/fenor-session /usr/local/bin/fenor-terminal /usr/local/bin/save-memory
 ok "Scripts atualizados"
 
@@ -129,6 +132,35 @@ if [ -f /etc/sudoers.d/fenor-scripts ] && ! grep -qF '/usr/local/bin/delete-app'
   fi
 else
   ok "Sudoers já atualizado"
+fi
+
+# Habilita sudo sem senha para o novo export-app (instalações antigas)
+if [ -f /etc/sudoers.d/fenor-scripts ] && ! grep -qF '/usr/local/bin/export-app' /etc/sudoers.d/fenor-scripts; then
+  cp /etc/sudoers.d/fenor-scripts /etc/sudoers.d/fenor-scripts.bak
+  echo 'www-data ALL=(root) NOPASSWD: /usr/local/bin/export-app' >> /etc/sudoers.d/fenor-scripts
+  if visudo -cf /etc/sudoers.d/fenor-scripts &>/dev/null; then
+    chmod 440 /etc/sudoers.d/fenor-scripts
+    rm -f /etc/sudoers.d/fenor-scripts.bak
+    ok "Sudoers: export-app habilitado"
+  else
+    mv /etc/sudoers.d/fenor-scripts.bak /etc/sudoers.d/fenor-scripts
+    warn "Sudoers: falha ao habilitar export-app (verifique /etc/sudoers.d/fenor-scripts)"
+  fi
+else
+  ok "Sudoers (export-app) já atualizado"
+fi
+
+# Registra o cron de agentes autônomos (instalações antigas)
+mkdir -p /var/log/fenor
+if [ ! -f /etc/cron.d/fenor-agent-cron ]; then
+  cat > /etc/cron.d/fenor-agent-cron << 'CRON'
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 3 * * * root /usr/local/bin/fenor-agent-cron >> /var/log/fenor/agent-cron.log 2>&1
+CRON
+  chmod 644 /etc/cron.d/fenor-agent-cron
+  ok "Cron de agentes configurado (diário às 03:00)"
+else
+  ok "Cron de agentes já configurado"
 fi
 
 # Migra serviços ttyd existentes para fenor-terminal (necessário para Planejador/Executor no Studio)

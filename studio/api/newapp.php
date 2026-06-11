@@ -32,8 +32,26 @@ try {
         ->execute([$name, $description, $github_repo, $config_json]);
     echo json_encode(['success' => true, 'message' => "App \"$name\" registered."]);
 } catch (Throwable $e) {
-    $msg = strpos($e->getMessage(), 'unique') !== false || strpos($e->getMessage(), 'duplicate') !== false
-        ? "An app named \"$name\" already exists."
-        : $e->getMessage();
-    echo json_encode(['success' => false, 'error' => $msg]);
+    $isDuplicate = strpos($e->getMessage(), 'unique') !== false || strpos($e->getMessage(), 'duplicate') !== false;
+
+    if ($isDuplicate) {
+        // A previous attempt may have registered the app but failed before
+        // provisioning completed — allow retrying with the same name in that case.
+        $stmt = fenorDB()->prepare('SELECT status FROM fenor_apps WHERE name = ?');
+        $stmt->execute([$name]);
+        $existing = $stmt->fetch();
+
+        if ($existing && $existing['status'] === 'registered') {
+            fenorDB()
+                ->prepare('UPDATE fenor_apps SET description = ?, github_repo = ?, config = ? WHERE name = ?')
+                ->execute([$description, $github_repo, $config_json, $name]);
+            echo json_encode(['success' => true, 'message' => "App \"$name\" was already registered, retrying provisioning."]);
+            exit;
+        }
+
+        echo json_encode(['success' => false, 'error' => "An app named \"$name\" already exists."]);
+        exit;
+    }
+
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }

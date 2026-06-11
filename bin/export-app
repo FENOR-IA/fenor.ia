@@ -1,0 +1,48 @@
+#!/bin/bash
+# Fenor — exporta um app (código + memory) em .tar.gz para download
+# Uso: export-app <app-name> [env]
+
+APP=$1
+ENV=${2:-dev}
+
+source /etc/fenor/.env
+
+if [ -z "$APP" ]; then
+  echo "! Uso: export-app <app-name> [env]" >&2
+  exit 1
+fi
+
+APP_PATH="${APPS_PATH:-/var/www}/$ENV/$APP"
+
+if [ ! -d "$APP_PATH" ]; then
+  echo "! App não encontrado: $APP_PATH" >&2
+  exit 1
+fi
+
+EXPORT_DIR="/var/fenor/exports"
+mkdir -p "$EXPORT_DIR"
+chown www-data:www-data "$EXPORT_DIR"
+chmod 700 "$EXPORT_DIR"
+
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+OUT_FILE="$EXPORT_DIR/${APP}-${ENV}-${TIMESTAMP}.tar.gz"
+
+tar -czf "$OUT_FILE" \
+  -C "${APPS_PATH:-/var/www}/$ENV" \
+  --exclude="$APP/.git" \
+  --exclude="$APP/.env" \
+  --exclude="$APP/.ssh" \
+  --exclude="$APP/vendor" \
+  --exclude="$APP/node_modules" \
+  "$APP"
+
+if [ $? -ne 0 ] || [ ! -f "$OUT_FILE" ]; then
+  echo "! Falha ao gerar o pacote." >&2
+  exit 1
+fi
+
+# www-data precisa ler/remover o arquivo após o download
+chown www-data:www-data "$OUT_FILE"
+chmod 600 "$OUT_FILE"
+
+echo "$OUT_FILE"

@@ -264,7 +264,7 @@ $groups = [
         $authMethod  = trim($settings['GITHUB_AUTH_METHOD'] ?? '');
         $methodLabel = $authMethod === 'pat' ? 'Personal Access Token' : '';
       ?>
-      <div class="table-wrap" style="margin-bottom:1.25rem;">
+      <div class="table-wrap" id="github" style="margin-bottom:1.25rem;">
         <div class="table-head">
           <h2 style="display:flex;align-items:center;gap:.5rem;">
             <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:var(--ink);" xmlns="http://www.w3.org/2000/svg">

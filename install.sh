@@ -538,13 +538,16 @@ run "Download: delete-app"     curl -fsSL "$REPO_RAW/bin/delete-app"     -o /usr
 run "Download: fenor-promote"  curl -fsSL "$REPO_RAW/bin/fenor-promote"  -o /usr/local/bin/fenor-promote
 run "Download: fenor-git"      curl -fsSL "$REPO_RAW/bin/fenor-git"      -o /usr/local/bin/fenor-git
 run "Download: fenor-agent"    curl -fsSL "$REPO_RAW/bin/fenor-agent"    -o /usr/local/bin/fenor-agent
+run "Download: fenor-agent-cron"   curl -fsSL "$REPO_RAW/bin/fenor-agent-cron"   -o /usr/local/bin/fenor-agent-cron
+run "Download: export-app"     curl -fsSL "$REPO_RAW/bin/export-app"     -o /usr/local/bin/export-app
 run "Download: fenor-learn"    curl -fsSL "$REPO_RAW/bin/fenor-learn"    -o /usr/local/bin/fenor-learn
 run "Download: fenor-session"  curl -fsSL "$REPO_RAW/bin/fenor-session"  -o /usr/local/bin/fenor-session
 run "Download: fenor-terminal"     curl -fsSL "$REPO_RAW/bin/fenor-terminal"     -o /usr/local/bin/fenor-terminal
 run "Download: fenor-save-session" curl -fsSL "$REPO_RAW/bin/fenor-save-session" -o /usr/local/bin/fenor-save-session
 run "Download: save-memory"        curl -fsSL "$REPO_RAW/bin/save-memory"        -o /usr/local/bin/save-memory
 chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/delete-app /usr/local/bin/fenor-promote \
-         /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-learn \
+         /usr/local/bin/fenor-git /usr/local/bin/fenor-agent /usr/local/bin/fenor-agent-cron /usr/local/bin/export-app \
+         /usr/local/bin/fenor-learn \
          /usr/local/bin/fenor-session /usr/local/bin/fenor-terminal \
          /usr/local/bin/fenor-save-session /usr/local/bin/save-memory
 ok "Scripts instalados"
@@ -569,11 +572,21 @@ www-data ALL=(root) NOPASSWD: /usr/local/bin/delete-app
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor-promote
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor
 www-data ALL=(root) NOPASSWD: /usr/local/bin/fenor-git
+www-data ALL=(root) NOPASSWD: /usr/local/bin/export-app
 www-data ALL=(root) NOPASSWD: /bin/systemctl restart ttyd-*
 www-data ALL=(root) NOPASSWD: /usr/bin/tee /etc/fenor/ttyd.env
 SUDOERS
 chmod 440 /etc/sudoers.d/fenor-scripts
 ok "Sudoers configurado"
+
+step "Agendando agentes autônomos (cron)..."
+mkdir -p /var/log/fenor
+cat > /etc/cron.d/fenor-agent-cron << 'CRON'
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 3 * * * root /usr/local/bin/fenor-agent-cron >> /var/log/fenor/agent-cron.log 2>&1
+CRON
+chmod 644 /etc/cron.d/fenor-agent-cron
+ok "Cron configurado (diário às 03:00)"
 
 step "Instalando Studio..."
 run "install-studio.sh" bash -c "curl -fsSL '$REPO_RAW/studio/install-studio.sh' | bash"
