@@ -37,6 +37,10 @@ APP_ADMIN_HASH=$(php -r "echo password_hash('$APP_ADMIN_PASS', PASSWORD_BCRYPT);
 # Protocol: http locally, https when Cloudflare is configured
 [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
 
+warn() {
+  echo "  ! $*" >&2
+}
+
 echo ""
 echo "  Fenor — Creating app: $APP"
 echo "  ────────────────────────────────────"
@@ -86,7 +90,8 @@ if [ -n "$ANTHROPIC_API_KEY" ]; then
   chmod 644 /etc/fenor/ttyd.env
 fi
 
-cat > /etc/systemd/system/ttyd-${APP_SAFE}-dev.service <<UNIT
+if [ -d /run/systemd/system ]; then
+  cat > /etc/systemd/system/ttyd-${APP_SAFE}-dev.service <<UNIT
 [Unit]
 Description=ttyd terminal — $APP (dev)
 After=network.target
@@ -104,9 +109,30 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
-systemctl enable ttyd-${APP_SAFE}-dev &>/dev/null
-systemctl start ttyd-${APP_SAFE}-dev 2>&1 || warn "ttyd did not start — check: systemctl status ttyd-${APP_SAFE}-dev"
+  systemctl daemon-reload
+  systemctl enable ttyd-${APP_SAFE}-dev &>/dev/null
+  systemctl start ttyd-${APP_SAFE}-dev 2>&1 || warn "ttyd did not start — check: systemctl status ttyd-${APP_SAFE}-dev"
+elif command -v supervisorctl &>/dev/null; then
+  cat > /etc/supervisor/conf.d/ttyd-${APP_SAFE}-dev.conf <<SUPERVISOR
+[program:ttyd-${APP_SAFE}-dev]
+command=/usr/local/bin/ttyd --port $TERM_PORT --interface 127.0.0.1 --writable /usr/local/bin/fenor-terminal $APP
+user=$SYS_USER
+directory=$APP_PATH
+environment=HOME="$APP_PATH"
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/ttyd-${APP_SAFE}-dev.log
+stderr_logfile=/var/log/ttyd-${APP_SAFE}-dev-err.log
+SUPERVISOR
+
+  supervisorctl reread &>/dev/null
+  supervisorctl update &>/dev/null
+  sleep 1
+  supervisorctl status "ttyd-${APP_SAFE}-dev" 2>/dev/null | grep -q RUNNING \
+    || warn "ttyd did not start — check: supervisorctl status ttyd-${APP_SAFE}-dev"
+else
+  warn "no init system detected (systemd/supervisor) — terminal service ttyd-${APP_SAFE}-dev was not started"
+fi
 
 cat > /etc/nginx/conf.d/terminal-${APP_SAFE}-dev.conf <<NGINX
 server {
@@ -122,7 +148,8 @@ server {
     }
 }
 NGINX
-nginx -t && systemctl reload nginx
+nginx -t
+systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || warn "could not reload nginx — restart it manually"
 echo "  ✓ Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN (port $TERM_PORT)"
 
 # 4. App .env
@@ -435,6 +462,10 @@ cat > .gitignore <<GIT
 .ssh/
 storage/
 vendor/
+.claude.json
+.claude/projects/
+.claude/backups/
+.claude/.last-cleanup
 GIT
 git add .
 git commit -q -m "init: $APP via Fenor"

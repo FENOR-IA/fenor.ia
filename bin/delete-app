@@ -57,9 +57,16 @@ remove_env() {
   echo "  → Ambiente $ENV"
 
   # Terminal (ttyd + nginx)
-  systemctl disable --now "ttyd-${APP_SAFE}-${ENV}" &>/dev/null
-  rm -f "/etc/systemd/system/ttyd-${APP_SAFE}-${ENV}.service"
-  systemctl daemon-reload
+  if [ -d /run/systemd/system ]; then
+    systemctl disable --now "ttyd-${APP_SAFE}-${ENV}" &>/dev/null
+    systemctl daemon-reload
+    rm -f "/etc/systemd/system/ttyd-${APP_SAFE}-${ENV}.service"
+  elif command -v supervisorctl &>/dev/null; then
+    supervisorctl stop "ttyd-${APP_SAFE}-${ENV}" &>/dev/null
+    rm -f "/etc/supervisor/conf.d/ttyd-${APP_SAFE}-${ENV}.conf"
+    supervisorctl reread &>/dev/null
+    supervisorctl update &>/dev/null
+  fi
   rm -f "/etc/nginx/conf.d/terminal-${APP_SAFE}-${ENV}.conf"
   echo "  ✓ Terminal removido"
 
@@ -101,7 +108,7 @@ for ENV in dev hml prd; do
   fi
 done
 
-nginx -t &>/dev/null && systemctl reload nginx &>/dev/null
+nginx -t &>/dev/null && { systemctl reload nginx 2>/dev/null || nginx -s reload &>/dev/null; }
 
 # Deploy key (compartilhada entre os ambientes do app)
 KEY_FILE="/etc/fenor/keys/${APP_SAFE}"

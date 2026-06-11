@@ -15,6 +15,10 @@ APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
 # Protocol: http locally, https when Cloudflare is configured
 [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
 
+warn() {
+  echo "  ! $*" >&2
+}
+
 # Detect current environment and set target
 if [ -d "$APPS_PATH/dev/$APP" ] && [ ! -d "$APPS_PATH/hml/$APP" ]; then
   FROM="dev"; TO="hml"
@@ -95,7 +99,8 @@ else
   NGINX_SERVER="terminal.$APP.$BASE_DOMAIN"
 fi
 
-cat > /etc/systemd/system/ttyd-${APP_SAFE}-${TO}.service <<UNIT
+if [ -d /run/systemd/system ]; then
+  cat > /etc/systemd/system/ttyd-${APP_SAFE}-${TO}.service <<UNIT
 [Unit]
 Description=ttyd terminal — $APP ($TO)
 After=network.target
@@ -111,8 +116,29 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
-systemctl enable ttyd-${APP_SAFE}-${TO} --now &>/dev/null
+  systemctl daemon-reload
+  systemctl enable ttyd-${APP_SAFE}-${TO} --now &>/dev/null
+elif command -v supervisorctl &>/dev/null; then
+  cat > /etc/supervisor/conf.d/ttyd-${APP_SAFE}-${TO}.conf <<SUPERVISOR
+[program:ttyd-${APP_SAFE}-${TO}]
+command=/usr/local/bin/ttyd --port $TERM_PORT --interface 127.0.0.1 --writable bash
+user=$SYS_USER
+directory=$TO_PATH
+environment=HOME="$TO_PATH"
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/ttyd-${APP_SAFE}-${TO}.log
+stderr_logfile=/var/log/ttyd-${APP_SAFE}-${TO}-err.log
+SUPERVISOR
+
+  supervisorctl reread &>/dev/null
+  supervisorctl update &>/dev/null
+  sleep 1
+  supervisorctl status "ttyd-${APP_SAFE}-${TO}" 2>/dev/null | grep -q RUNNING \
+    || warn "ttyd did not start — check: supervisorctl status ttyd-${APP_SAFE}-${TO}"
+else
+  warn "no init system detected (systemd/supervisor) — terminal service ttyd-${APP_SAFE}-${TO} was not started"
+fi
 
 cat > /etc/nginx/conf.d/terminal-${APP_SAFE}-${TO}.conf <<NGINX
 server {
@@ -128,7 +154,8 @@ server {
     }
 }
 NGINX
-nginx -t && systemctl reload nginx
+nginx -t
+systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || warn "could not reload nginx — restart it manually"
 echo "  ✓ Terminal: $TERM_URL (port $TERM_PORT)"
 
 # 4. .env for the new environment
@@ -167,6 +194,10 @@ cat > .gitignore <<GIT
 .env
 storage/
 vendor/
+.claude.json
+.claude/projects/
+.claude/backups/
+.claude/.last-cleanup
 GIT
 git add .
 git commit -q -m "promote: $APP $FROM → $TO"
