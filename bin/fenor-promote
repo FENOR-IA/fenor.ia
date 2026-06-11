@@ -12,8 +12,14 @@ fi
 
 APP_SAFE=$(echo "$APP" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
 
-# Protocol: http locally, https when Cloudflare is configured
-[ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
+APPS_HTTPS=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='APPS_HTTPS'\"" 2>/dev/null | tr -d ' \n')
+
+# Protocol: http locally, https when Cloudflare DNS automation is configured
+# or when the host nginx terminates HTTPS for app subdomains (APPS_HTTPS=true)
+PROTO="http"
+if { [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ]; } || [ "$APPS_HTTPS" = "true" ]; then
+  PROTO="https"
+fi
 
 warn() {
   echo "  ! $*" >&2
@@ -88,10 +94,10 @@ for TERM_PORT in $(seq 7700 7999); do
 done
 
 if [ "$TO" = "hml" ]; then
+  # HML terminal is served by path (/__fenor_terminal__/) on the app's own
+  # hostname, same as DEV — no separate terminal subdomain.
   APP_URL="$PROTO://$APP.hml.$BASE_DOMAIN"
-  TERM_URL="$PROTO://terminal.$APP.hml.$BASE_DOMAIN"
-  TERM_DNS="terminal.$APP.hml"
-  NGINX_SERVER="terminal.$APP.hml.$BASE_DOMAIN"
+  TERM_URL="$PROTO://$APP.hml.$BASE_DOMAIN/__fenor_terminal__/"
 else
   APP_URL="$PROTO://$APP.$BASE_DOMAIN"
   TERM_URL="$PROTO://terminal.$APP.$BASE_DOMAIN"
@@ -140,7 +146,12 @@ else
   warn "no init system detected (systemd/supervisor) — terminal service ttyd-${APP_SAFE}-${TO} was not started"
 fi
 
-cat > /etc/nginx/conf.d/terminal-${APP_SAFE}-${TO}.conf <<NGINX
+if [ "$TO" = "hml" ]; then
+  mkdir -p /etc/fenor/term-ports/hml
+  echo "$TERM_PORT" > "/etc/fenor/term-ports/hml/$APP"
+  fenor-regen-termports hml || warn "could not reload nginx — restart it manually"
+else
+  cat > /etc/nginx/conf.d/terminal-${APP_SAFE}-${TO}.conf <<NGINX
 server {
     listen 80;
     server_name $NGINX_SERVER;
@@ -154,8 +165,9 @@ server {
     }
 }
 NGINX
-nginx -t
-systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || warn "could not reload nginx — restart it manually"
+  nginx -t
+  systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || warn "could not reload nginx — restart it manually"
+fi
 echo "  ✓ Terminal: $TERM_URL (port $TERM_PORT)"
 
 # 4. .env for the new environment
@@ -226,7 +238,7 @@ add_dns() {
 if [ "$TO" = "hml" ]; then DNS_APP="$APP.hml"; else DNS_APP="$APP"; fi
 
 add_dns "$DNS_APP"
-add_dns "$TERM_DNS"
+[ "$TO" = "hml" ] || add_dns "$TERM_DNS"
 
 # Final permissions
 chown -R "$SYS_USER:www-data" "$TO_PATH"

@@ -24,6 +24,7 @@ $fields = [
     'CF_ZONE_ID'         => ['label' => 'CF Zone ID',        'type' => 'text',     'placeholder' => ''],
     'CF_TUNNEL_ID'       => ['label' => 'CF Tunnel ID',      'type' => 'text',     'placeholder' => ''],
     'APPS_PATH'          => ['label' => 'Apps directory',    'type' => 'text',     'placeholder' => '/var/www'],
+    'APPS_HTTPS'         => ['label' => 'Apps usam HTTPS (.dev/.hml)', 'type' => 'text', 'placeholder' => 'true ou false'],
     'ANTHROPIC_API_KEY'  => ['label' => 'Anthropic API Key', 'type' => 'password', 'placeholder' => 'sk-ant-...'],
 ];
 
@@ -128,7 +129,7 @@ $groups = [
     [
         'title'  => 'Geral',
         'icon'   => 'settings-2',
-        'keys'   => ['BASE_DOMAIN', 'ADMIN_EMAIL', 'TERMINAL_URL', 'APPS_PATH'],
+        'keys'   => ['BASE_DOMAIN', 'ADMIN_EMAIL', 'TERMINAL_URL', 'APPS_PATH', 'APPS_HTTPS'],
         'checks' => ['BASE_DOMAIN', 'TERMINAL_URL'],
     ],
     [

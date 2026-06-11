@@ -11,6 +11,7 @@ source /etc/fenor/.env
 GITHUB_TOKEN=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='GITHUB_TOKEN'\"" 2>/dev/null | tr -d ' \n')
 GITHUB_ORG=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='GITHUB_ORG'\"" 2>/dev/null | tr -d ' \n')
 ANTHROPIC_API_KEY=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='ANTHROPIC_API_KEY'\"" 2>/dev/null | tr -d ' \n')
+APPS_HTTPS=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='APPS_HTTPS'\"" 2>/dev/null | tr -d ' \n')
 
 if [ -z "$APP" ]; then
   echo ""
@@ -34,8 +35,12 @@ SYS_USER="fenor_${APP_SAFE}_dev"
 APP_ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 12)
 APP_ADMIN_HASH=$(php -r "echo password_hash('$APP_ADMIN_PASS', PASSWORD_BCRYPT);")
 
-# Protocol: http locally, https when Cloudflare is configured
-[ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ] && PROTO="https" || PROTO="http"
+# Protocol: http locally, https when Cloudflare DNS automation is configured
+# or when the host nginx terminates HTTPS for app subdomains (APPS_HTTPS=true)
+PROTO="http"
+if { [ -n "$CF_TOKEN" ] && [ -n "$CF_ZONE_ID" ]; } || [ "$APPS_HTTPS" = "true" ]; then
+  PROTO="https"
+fi
 
 warn() {
   echo "  ! $*" >&2
@@ -134,30 +139,19 @@ else
   warn "no init system detected (systemd/supervisor) — terminal service ttyd-${APP_SAFE}-dev was not started"
 fi
 
-cat > /etc/nginx/conf.d/terminal-${APP_SAFE}-dev.conf <<NGINX
-server {
-    listen 80;
-    server_name terminal.$APP.dev.$BASE_DOMAIN;
-    location / {
-        proxy_pass http://127.0.0.1:$TERM_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_read_timeout 43200s;
-    }
-}
-NGINX
-nginx -t
-systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || warn "could not reload nginx — restart it manually"
-echo "  ✓ Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN (port $TERM_PORT)"
+# Terminal is served by path (/__fenor_terminal__/) on the app's own
+# hostname — register the port in the dev term-ports map for nginx.
+mkdir -p /etc/fenor/term-ports/dev
+echo "$TERM_PORT" > "/etc/fenor/term-ports/dev/$APP"
+fenor-regen-termports dev || warn "could not reload nginx — restart it manually"
+echo "  ✓ Terminal: $PROTO://$APP.dev.$BASE_DOMAIN/__fenor_terminal__/ (port $TERM_PORT)"
 
 # 4. App .env
 cat > "$APP_PATH/.env" <<ENV
 APP_NAME=$APP
 APP_ENV=dev
 APP_URL=$PROTO://$APP.dev.$BASE_DOMAIN
-TERMINAL_URL=$PROTO://terminal.$APP.dev.$BASE_DOMAIN
+TERMINAL_URL=$PROTO://$APP.dev.$BASE_DOMAIN/__fenor_terminal__/
 TERMINAL_PORT=$TERM_PORT
 
 DB_HOST=127.0.0.1
@@ -332,7 +326,7 @@ ${DESCRIPTION:-Sem descrição}
 ## Ambiente
 - Env: DEV
 - URL: $PROTO://$APP.dev.$BASE_DOMAIN
-- Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN
+- Terminal: $PROTO://$APP.dev.$BASE_DOMAIN/__fenor_terminal__/
 - Banco: schema \`$DB_SCHEMA\` (PostgreSQL)
 - Usuário do sistema: \`$SYS_USER\`
 - Diretório: $APP_PATH
@@ -341,7 +335,7 @@ ${DESCRIPTION:-Sem descrição}
 ## Stack
 - PHP + Nginx
 - PostgreSQL — schema isolado por ambiente
-- Cloudflare Tunnel (SSL automático)
+- HTTPS automático (configurado no host)
 
 ## Estrutura
 \`\`\`
@@ -528,7 +522,6 @@ add_dns() {
 }
 
 add_dns "$APP.dev"
-add_dns "terminal.$APP.dev"
 
 # Final permissions
 chown -R "$SYS_USER:www-data" "$APP_PATH"
@@ -540,7 +533,7 @@ echo ""
 echo "  ════════════════════════════════════"
 echo "  App ready!"
 echo "  URL:      $PROTO://$APP.dev.$BASE_DOMAIN"
-echo "  Terminal: $PROTO://terminal.$APP.dev.$BASE_DOMAIN"
+echo "  Terminal: $PROTO://$APP.dev.$BASE_DOMAIN/__fenor_terminal__/"
 echo "  Database: $DB_SCHEMA"
 echo "  User:     $SYS_USER"
 echo ""

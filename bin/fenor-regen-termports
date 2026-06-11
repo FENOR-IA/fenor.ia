@@ -1,0 +1,36 @@
+#!/bin/bash
+# fenor-regen-termports — regenera o map de portas de terminal por app
+#
+# Cada app tem um arquivo /etc/fenor/term-ports/<env>/<app> contendo a porta
+# do ttyd. Este script junta todos esses arquivos em
+# /etc/fenor/term-ports/<env>.map (incluído pelo nginx via `map $app ...`)
+# e recarrega o nginx.
+#
+# Uso: fenor-regen-termports <dev|hml>
+
+set -e
+
+ENV_NAME="$1"
+case "$ENV_NAME" in
+  dev|hml) ;;
+  *) echo "Usage: fenor-regen-termports <dev|hml>" >&2; exit 1 ;;
+esac
+
+DIR="/etc/fenor/term-ports/$ENV_NAME"
+MAP="/etc/fenor/term-ports/$ENV_NAME.map"
+
+mkdir -p "$DIR"
+: > "$MAP"
+for f in "$DIR"/*; do
+  [ -f "$f" ] || continue
+  APP=$(basename "$f")
+  PORT=$(tr -d '[:space:]' < "$f")
+  echo "    $APP $PORT;" >> "$MAP"
+done
+
+if nginx -t 2>/dev/null; then
+  systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+else
+  echo "  ! nginx -t failed after regenerating $MAP — check config" >&2
+  exit 1
+fi
