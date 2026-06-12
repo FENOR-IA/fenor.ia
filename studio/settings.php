@@ -73,20 +73,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'claude-setup-token') {
-        $apps    = loadApps($config['apps_path']);
-        $app     = $apps[0] ?? null;
-        $termUrl = $app['envs']['dev']['terminal'] ?? '';
-        if ($app && $termUrl) {
-            @mkdir('/tmp/fenor-flags', 0777);
-            @chmod('/tmp/fenor-flags', 0777);
-            @file_put_contents('/tmp/fenor-flags/setup-token', "1\n");
-            @chmod('/tmp/fenor-flags/setup-token', 0666);
-            $appSafe = str_replace('-', '_', $app['name']);
-            shell_exec("sudo /bin/systemctl restart ttyd-{$appSafe}-dev 2>&1");
-            header('Location: ' . $termUrl);
-            exit;
-        }
-        $error = 'Crie um app primeiro para gerar o token de assinatura.';
+        @mkdir('/tmp/fenor-flags', 0777);
+        @chmod('/tmp/fenor-flags', 0777);
+        @file_put_contents('/tmp/fenor-flags/setup-token', "1\n");
+        @chmod('/tmp/fenor-flags/setup-token', 0666);
+        $termUrl = fenorSetting('TERMINAL_URL', '/terminal/');
+        header('Location: ' . $termUrl);
+        exit;
     }
 
     if ($action === 'github-pat') {
@@ -223,7 +216,6 @@ $claudeTokenPreview = $claudeConfigured ? substr($claudeToken, 0, 18) . '••�
       <?php endif; ?>
 
       <!-- ── CLAUDE ─────────────────────────────────────────── -->
-      <?php $claudeApps = loadApps($config['apps_path']); ?>
       <div class="table-wrap" style="margin-bottom:1.25rem;">
         <div class="table-head">
           <h2 style="display:flex;align-items:center;gap:.45rem;">
@@ -253,17 +245,12 @@ $claudeTokenPreview = $claudeConfigured ? substr($claudeToken, 0, 18) . '••�
         <div style="padding:1.25rem;border-bottom:1px solid var(--rule);">
           <form method="POST" target="_blank" style="margin:0 0 1rem;">
             <input type="hidden" name="_action" value="claude-setup-token">
-            <button type="submit" class="btn btn-primary" <?= $claudeApps ? '' : 'disabled' ?>>
+            <button type="submit" class="btn btn-primary">
               🔑 Gerar token de assinatura
             </button>
-            <?php if (!$claudeApps): ?>
-              <p style="font-size:.75rem;color:var(--muted);margin:.5rem 0 0;">
-                Crie um app primeiro para gerar o token.
-              </p>
-            <?php endif; ?>
           </form>
           <ol style="font-size:.8125rem;color:var(--ink);line-height:1.85;margin:0;padding-left:1.25rem;">
-            <li>Clique no botão acima — abre o terminal do seu app numa aba nova e já começa o processo.</li>
+            <li>Clique no botão acima — abre o terminal numa aba nova e já começa o processo.</li>
             <li><strong>Na aba do terminal</strong>: clique no link azul de autorização e faça login com sua conta Claude (Pro ou Max).</li>
             <li>Depois do login, a página vai mostrar um código (algo como <code>xxxxxx#yyyyyy</code>) — copie esse código.</li>
             <li><strong>Volte na aba do terminal</strong>, cole esse código onde ele estiver pedindo e aperte Enter.</li>

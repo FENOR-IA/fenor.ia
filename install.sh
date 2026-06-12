@@ -552,6 +552,10 @@ chmod +x /usr/local/bin/fenor /usr/local/bin/newapp /usr/local/bin/delete-app /u
          /usr/local/bin/fenor-save-session /usr/local/bin/save-memory
 ok "Scripts instalados"
 
+sed -i 's#--writable bash#--writable /usr/local/bin/fenor-terminal#' /etc/systemd/system/ttyd.service
+systemctl daemon-reload >> "$LOG" 2>&1
+systemctl restart ttyd  >> "$LOG" 2>&1 || true
+
 step "Clonando templates..."
 run "Clone fenor-ia-template" \
   bash -c "rm -rf /etc/fenor/templates \
