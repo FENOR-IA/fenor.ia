@@ -31,6 +31,10 @@ function loadApps(string $appsPath): array {
     return array_values($apps);
 }
 
+function fenorClaudeConfigured(): bool {
+    return trim(fenorSetting('CLAUDE_CODE_OAUTH_TOKEN', '')) !== '';
+}
+
 function nextEnv(array $app): ?string {
     if (!isset($app['envs']['hml'])) return 'hml';
     if (!isset($app['envs']['prd'])) return 'prd';

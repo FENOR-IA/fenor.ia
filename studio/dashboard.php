@@ -7,6 +7,8 @@ if (empty($_SESSION['user'])) { header('Location: login.php'); exit; }
 $config = require __DIR__ . '/config/config.php';
 require  __DIR__ . '/config/helpers.php';
 
+$claudeConfigured = fenorClaudeConfigured();
+
 // Apps in database
 $dbApps = [];
 try {
@@ -370,6 +372,29 @@ $_templates = file_exists($_templatesIndex)
     </div>
   </div>
 </div>
+
+<!-- CLAUDE SETUP MODAL -->
+<?php if (!$claudeConfigured): ?>
+<div class="modal-bg open" id="claude-setup-modal">
+  <div class="modal" style="max-width:440px;text-align:center;">
+    <div style="width:48px;height:48px;border-radius:12px;background:#fff3cd;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
+      <i data-lucide="bot" style="width:24px;height:24px;stroke:#856404;"></i>
+    </div>
+    <h2 style="text-align:center;" data-pt="Configure o Claude para começar" data-en="Set up Claude to get started">Configure o Claude para começar</h2>
+    <p style="font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:1.5rem;"
+       data-pt="Sem o Claude configurado, o Studio não funciona — o Planejador e o Executor ficam bloqueados em todos os apps."
+       data-en="Without Claude configured, the Studio doesn't work — the Planner and Executor stay locked for every app.">
+      Sem o Claude configurado, o Studio não funciona — o Planejador e o Executor ficam bloqueados em todos os apps.
+    </p>
+    <div style="display:flex;gap:.5rem;justify-content:center;">
+      <button type="button" class="btn btn-secondary"
+              onclick="document.getElementById('claude-setup-modal').classList.remove('open')"
+              data-pt="Configurar depois" data-en="Configure later">Configurar depois</button>
+      <a href="settings.php" class="btn btn-primary" data-pt="Configurar agora" data-en="Configure now">Configurar agora</a>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- MODAL -->
 <div class="modal-bg" id="modal">

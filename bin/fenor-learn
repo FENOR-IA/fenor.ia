@@ -18,13 +18,11 @@ LOG="$APP_PATH/memory/log/$TODAY.md"
 [ -d "$APP_PATH" ] || exit 0
 [ -f "$LOG" ]      || exit 0
 
-ANTHROPIC_API_KEY=$(cat /etc/fenor/ttyd.env 2>/dev/null | grep ANTHROPIC_API_KEY | cut -d= -f2 | tr -d ' ')
-[ -z "$ANTHROPIC_API_KEY" ] && \
-  ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /etc/fenor/.env 2>/dev/null | cut -d= -f2 | tr -d ' ')
+# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+source /usr/local/bin/fenor-claude-auth
 
-[ -z "$ANTHROPIC_API_KEY" ] && exit 0
+[ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ] && exit 0
 
-export ANTHROPIC_API_KEY
 cd "$APP_PATH"
 
 PROMPT="Leia o log da sessão de hoje em memory/log/$TODAY.md. Extraia aprendizados e atualize os seguintes arquivos (apenas se houver conteúdo relevante):

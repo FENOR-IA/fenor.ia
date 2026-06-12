@@ -5,6 +5,7 @@ session_start();
 if (empty($_SESSION['user'])) { header('Location: login.php'); exit; }
 
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/config/helpers.php';
 $config  = require  __DIR__ . '/config/config.php';
 $success = '';
 $error   = '';
@@ -15,40 +16,77 @@ $_templates        = file_exists($_templatesIndex)
     ? (json_decode(file_get_contents($_templatesIndex), true) ?: [])
     : [];
 
-// Platform settings (excludes GitHub — managed in dedicated section)
-$fields = [
-    'BASE_DOMAIN'        => ['label' => 'Base domain',       'type' => 'text',     'placeholder' => 'fenor.ia.br'],
-    'ADMIN_EMAIL'        => ['label' => 'Admin email',       'type' => 'email',    'placeholder' => 'you@email.com'],
-    'TERMINAL_URL'       => ['label' => 'Terminal URL',      'type' => 'url',      'placeholder' => 'https://terminal.fenor.ia.br'],
-    'CF_TOKEN'           => ['label' => 'CF API Token',      'type' => 'password', 'placeholder' => ''],
-    'CF_ZONE_ID'         => ['label' => 'CF Zone ID',        'type' => 'text',     'placeholder' => ''],
-    'CF_TUNNEL_ID'       => ['label' => 'CF Tunnel ID',      'type' => 'text',     'placeholder' => ''],
-    'APPS_PATH'          => ['label' => 'Apps directory',    'type' => 'text',     'placeholder' => '/var/www'],
-    'APPS_HTTPS'         => ['label' => 'Apps usam HTTPS (.dev/.hml)', 'type' => 'text', 'placeholder' => 'true ou false'],
-    'ANTHROPIC_API_KEY'  => ['label' => 'Anthropic API Key', 'type' => 'password', 'placeholder' => 'sk-ant-...'],
-];
+// Atualiza /etc/fenor/ttyd.env com o token de assinatura (read-modify-write —
+// preserva ANTHROPIC_API_KEY legado, se houver) e reinicia os terminais
+function fenorSyncClaudeTtydEnv($token) {
+    $current = [];
+    foreach (@file('/etc/fenor/ttyd.env', FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+        if (preg_match('/^([A-Z_]+)=(.*)$/', $line, $m)) $current[$m[1]] = $m[2];
+    }
+    if ($token !== '') {
+        $current['CLAUDE_CODE_OAUTH_TOKEN'] = $token;
+    } else {
+        unset($current['CLAUDE_CODE_OAUTH_TOKEN']);
+    }
+    $out = '';
+    foreach ($current as $k => $v) { if ($v !== '') $out .= "$k=$v\n"; }
+
+    // /etc/fenor/ttyd.env é root:root 644 — www-data não tem permissão de
+    // escrita direta; usa o sudoers liberado para `tee` (NOPASSWD).
+    $proc = proc_open('sudo /usr/bin/tee /etc/fenor/ttyd.env', [
+        0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w'],
+    ], $pipes);
+    if (is_resource($proc)) {
+        fwrite($pipes[0], $out);
+        fclose($pipes[0]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        proc_close($proc);
+    }
+    shell_exec('sudo systemctl restart "ttyd-*.service" 2>/dev/null &');
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['_action'] ?? '';
 
-    if ($action === 'settings') {
-        try {
-            foreach ($fields as $key => $meta) {
-                if ($meta['type'] === 'password' && empty($_POST[$key])) continue;
-                $val = trim($_POST[$key] ?? '');
-                if ($val !== '') saveSetting($key, $val);
-            }
-            $success = 'Settings saved.';
+    if ($action === 'claude-token-save') {
+        $token = trim($_POST['CLAUDE_CODE_OAUTH_TOKEN'] ?? '');
+        if ($token === '') {
+            $error = 'Cole o token antes de salvar.';
+        } elseif (strpos($token, 'sk-ant-') !== 0) {
+            $error = strpos($token, '#') !== false
+                ? 'Esse parece ser o código de autorização — ele deve ser colado de volta no terminal, onde o "claude setup-token" está esperando (não aqui). Depois disso, copie a linha que começa com "sk-ant-oat..." e cole aqui.'
+                : 'Token inválido — o token de assinatura do Claude começa com "sk-ant-oat...". Confira se copiou a linha completa do terminal.';
+        } else {
+            saveSetting('CLAUDE_CODE_OAUTH_TOKEN', $token);
+            fenorSyncClaudeTtydEnv($token);
+            $success = 'Token salvo.';
             $config  = config();
-            // Update /etc/fenor/ttyd.env and restart ttyd services
-            if (!empty($_POST['ANTHROPIC_API_KEY'])) {
-                $apiKey = trim($_POST['ANTHROPIC_API_KEY']);
-                @file_put_contents('/etc/fenor/ttyd.env', "ANTHROPIC_API_KEY=$apiKey\n");
-                shell_exec('sudo systemctl restart "ttyd-*.service" 2>/dev/null &');
-            }
-        } catch (Throwable $e) {
-            $error = 'Error saving: ' . $e->getMessage();
         }
+    }
+
+    if ($action === 'claude-token-delete') {
+        saveSetting('CLAUDE_CODE_OAUTH_TOKEN', '');
+        fenorSyncClaudeTtydEnv('');
+        $success = 'Token removido.';
+        $config  = config();
+    }
+
+    if ($action === 'claude-setup-token') {
+        $apps    = loadApps($config['apps_path']);
+        $app     = $apps[0] ?? null;
+        $termUrl = $app['envs']['dev']['terminal'] ?? '';
+        if ($app && $termUrl) {
+            @mkdir('/tmp/fenor-flags', 0777);
+            @chmod('/tmp/fenor-flags', 0777);
+            @file_put_contents('/tmp/fenor-flags/setup-token', "1\n");
+            @chmod('/tmp/fenor-flags/setup-token', 0666);
+            $appSafe = str_replace('-', '_', $app['name']);
+            shell_exec("sudo /bin/systemctl restart ttyd-{$appSafe}-dev 2>&1");
+            header('Location: ' . $termUrl);
+            exit;
+        }
+        $error = 'Crie um app primeiro para gerar o token de assinatura.';
     }
 
     if ($action === 'github-pat') {
@@ -104,6 +142,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'account-email') {
+        $email = trim($_POST['email'] ?? '');
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = 'Invalid email address.';
+        } else {
+            saveSetting('ADMIN_EMAIL', $email);
+            $success = 'Email updated.';
+            $config  = config();
+        }
+    }
+
     if ($action === 'password') {
         $new  = $_POST['new_password']     ?? '';
         $conf = $_POST['confirm_password'] ?? '';
@@ -125,26 +174,9 @@ $githubToken = trim($settings['GITHUB_TOKEN'] ?? '');
 $githubOrg   = trim($settings['GITHUB_ORG']   ?? '');
 $isConnected = !empty($githubToken) && !empty($githubUser);
 
-$groups = [
-    [
-        'title'  => 'Geral',
-        'icon'   => 'settings-2',
-        'keys'   => ['BASE_DOMAIN', 'ADMIN_EMAIL', 'TERMINAL_URL', 'APPS_PATH', 'APPS_HTTPS'],
-        'checks' => ['BASE_DOMAIN', 'TERMINAL_URL'],
-    ],
-    [
-        'title'  => 'Cloudflare',
-        'icon'   => 'cloud',
-        'keys'   => ['CF_TOKEN', 'CF_ZONE_ID', 'CF_TUNNEL_ID'],
-        'checks' => ['CF_TOKEN', 'CF_ZONE_ID', 'CF_TUNNEL_ID'],
-    ],
-    [
-        'title'  => 'Claude',
-        'icon'   => 'bot',
-        'keys'   => ['ANTHROPIC_API_KEY'],
-        'checks' => ['ANTHROPIC_API_KEY'],
-    ],
-];
+$claudeToken        = trim($settings['CLAUDE_CODE_OAUTH_TOKEN'] ?? '');
+$claudeConfigured   = $claudeToken !== '';
+$claudeTokenPreview = $claudeConfigured ? substr($claudeToken, 0, 18) . '••••••••' : '';
 ?>
 <!DOCTYPE html>
 <html lang="en" data-lang="pt">
@@ -190,75 +222,70 @@ $groups = [
         <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
       <?php endif; ?>
 
-      <?php foreach ($groups as $group): ?>
-      <!-- <?= strtoupper($group['title']) ?> -->
+      <!-- ── CLAUDE ─────────────────────────────────────────── -->
+      <?php $claudeApps = loadApps($config['apps_path']); ?>
       <div class="table-wrap" style="margin-bottom:1.25rem;">
         <div class="table-head">
           <h2 style="display:flex;align-items:center;gap:.45rem;">
-            <i data-lucide="<?= $group['icon'] ?>" style="width:15px;height:15px;"></i>
-            <?= $group['title'] ?>
+            <i data-lucide="bot" style="width:15px;height:15px;"></i>
+            Claude
           </h2>
-          <?php if ($group['title'] === 'Geral'): ?>
-          <span style="font-size:.75rem;color:var(--muted);">
-            DB: <?= htmlspecialchars($config['db_driver']) ?>
-          </span>
+          <?php if ($claudeConfigured): ?>
+            <span class="badge badge-ok" style="font-size:.7rem;"
+                  data-pt="Configurado" data-en="Configured">Configurado</span>
           <?php endif; ?>
         </div>
-        <form method="POST">
-          <input type="hidden" name="_action" value="settings">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:170px;">Campo</th>
-                <th>Valor</th>
-                <th style="width:120px;text-align:right;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($group['keys'] as $key):
-                $meta      = $fields[$key];
-                $val       = $settings[$key] ?? '';
-                $isPass    = $meta['type'] === 'password';
-                $hasStatus = in_array($key, $group['checks']);
-                $ok        = $hasStatus ? !empty($val) : null;
-              ?>
-              <tr>
-                <td style="font-weight:500;"><?= $meta['label'] ?></td>
-                <td style="padding-top:.45rem;padding-bottom:.45rem;">
-                  <input
-                    type="<?= $meta['type'] ?>"
-                    name="<?= $key ?>"
-                    placeholder="<?= htmlspecialchars($isPass ? '(unchanged)' : $meta['placeholder']) ?>"
-                    value="<?= $isPass ? '' : htmlspecialchars($val) ?>"
-                    autocomplete="off"
-                    style="width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:6px;padding:.45rem .65rem;font-size:.8125rem;font-family:inherit;background:#fff;color:var(--ink);outline:none;">
-                  <?php if ($isPass && $val): ?>
-                    <small style="display:block;font-size:.72rem;color:var(--muted);margin-top:.2rem;"
-                           data-pt="Configurado — deixe em branco para manter"
-                           data-en="Configured — leave blank to keep">
-                      Configurado — deixe em branco para manter
-                    </small>
-                  <?php endif; ?>
-                </td>
-                <td style="text-align:right;">
-                  <?php if ($hasStatus): ?>
-                    <span class="badge <?= $ok ? 'badge-ok' : 'badge-off' ?>">
-                      <?= $ok ? 'Configurado' : 'Pendente' ?>
-                    </span>
-                  <?php endif; ?>
-                </td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-          <div style="padding:.9rem 1.25rem;border-top:1px solid var(--rule);">
-            <button type="submit" class="btn btn-primary"
-                    data-pt="Salvar <?= $group['title'] ?>"
-                    data-en="Save <?= $group['title'] ?>">Salvar <?= $group['title'] ?></button>
+
+        <?php if ($claudeConfigured): ?>
+        <div class="gh-section-row" style="gap:.75rem;">
+          <code style="font-family:'Geist Mono',monospace;font-size:.85rem;background:var(--cream);padding:.55rem .8rem;border-radius:8px;">
+            <?= htmlspecialchars($claudeTokenPreview) ?>
+          </code>
+          <form method="POST" style="margin:0;" onsubmit="return confirm('Excluir o token de assinatura do Claude?');">
+            <input type="hidden" name="_action" value="claude-token-delete">
+            <button type="submit" class="btn btn-secondary btn-xs">
+              <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+              <span data-pt="Excluir token" data-en="Delete token">Excluir token</span>
+            </button>
+          </form>
+        </div>
+        <?php else: ?>
+        <div style="padding:1.25rem;border-bottom:1px solid var(--rule);">
+          <form method="POST" target="_blank" style="margin:0 0 1rem;">
+            <input type="hidden" name="_action" value="claude-setup-token">
+            <button type="submit" class="btn btn-primary" <?= $claudeApps ? '' : 'disabled' ?>>
+              🔑 Gerar token de assinatura
+            </button>
+            <?php if (!$claudeApps): ?>
+              <p style="font-size:.75rem;color:var(--muted);margin:.5rem 0 0;">
+                Crie um app primeiro para gerar o token.
+              </p>
+            <?php endif; ?>
+          </form>
+          <ol style="font-size:.8125rem;color:var(--ink);line-height:1.85;margin:0;padding-left:1.25rem;">
+            <li>Clique no botão acima — abre o terminal do seu app numa aba nova e já começa o processo.</li>
+            <li><strong>Na aba do terminal</strong>: clique no link azul de autorização e faça login com sua conta Claude (Pro ou Max).</li>
+            <li>Depois do login, a página vai mostrar um código (algo como <code>xxxxxx#yyyyyy</code>) — copie esse código.</li>
+            <li><strong>Volte na aba do terminal</strong>, cole esse código onde ele estiver pedindo e aperte Enter.</li>
+            <li>O terminal vai mostrar uma linha longa começando com <code>sk-ant-oat...</code> — copie essa linha inteira.</li>
+            <li><strong>Volte nesta aba (Settings)</strong>, cole essa linha no campo abaixo e clique em Salvar.</li>
+          </ol>
+        </div>
+        <form method="POST" style="padding:1.25rem;">
+          <input type="hidden" name="_action" value="claude-token-save">
+          <div class="field" style="display:flex;gap:.4rem;align-items:flex-end;max-width:480px;">
+            <div style="flex:1;">
+              <label data-pt="Token de assinatura" data-en="Subscription token">Token de assinatura</label>
+              <input type="password" id="claude-token-input" name="CLAUDE_CODE_OAUTH_TOKEN"
+                     placeholder="sk-ant-oat..." autocomplete="off"
+                     style="width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:6px;padding:.45rem .65rem;font-size:.8125rem;font-family:'Geist Mono',monospace;background:#fff;color:var(--ink);outline:none;">
+            </div>
+            <button type="button" onclick="toggleClaudeTokenVisibility()" class="btn btn-secondary btn-xs" title="Mostrar/ocultar">👁</button>
+            <button type="submit" class="btn btn-primary" data-pt="Salvar" data-en="Save">Salvar</button>
           </div>
         </form>
+        <?php endif; ?>
       </div>
-      <?php endforeach; ?>
 
       <!-- ── GITHUB ─────────────────────────────────────────── -->
       <?php
@@ -349,12 +376,24 @@ $groups = [
 
       </div>
 
-      <!-- ── CHANGE PASSWORD ────────────────────────────────── -->
+      <!-- ── ACCOUNT ────────────────────────────────────────── -->
       <div class="table-wrap">
         <div class="table-head">
-          <h2 data-pt="Alterar senha" data-en="Change password">Alterar senha</h2>
+          <h2 data-pt="Conta" data-en="Account">Conta</h2>
         </div>
         <div style="padding:1.25rem;max-width:380px;">
+          <form method="POST" style="margin-bottom:1.25rem;">
+            <input type="hidden" name="_action" value="account-email">
+            <div class="field">
+              <label data-pt="E-mail de acesso" data-en="Login email">E-mail de acesso</label>
+              <input type="email" name="email" required
+                     value="<?= htmlspecialchars($config['admin_email']) ?>"
+                     placeholder="you@email.com">
+            </div>
+            <button type="submit" class="btn btn-secondary btn-xs"
+                    data-pt="Salvar e-mail" data-en="Save email">Salvar e-mail</button>
+          </form>
+          <hr style="border:none;border-top:1px solid var(--rule);margin:0 0 1.25rem;">
           <form method="POST">
             <input type="hidden" name="_action" value="password">
             <div class="field">
@@ -413,6 +452,12 @@ $groups = [
 
 <script>
 lucide.createIcons();
+
+function toggleClaudeTokenVisibility() {
+  const input = document.getElementById('claude-token-input');
+  if (!input) return;
+  input.type = input.type === 'password' ? 'text' : 'password';
+}
 </script>
 </body>
 </html>

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Fenor — carrega credenciais do Claude Code (uso: `source fenor-claude-auth`)
+# Prioriza o token de assinatura (CLAUDE_CODE_OAUTH_TOKEN) sobre a API key:
+# quando há token de assinatura configurado, ANTHROPIC_API_KEY é removida do
+# ambiente para evitar cobrança por uso de API (a API key sempre tem
+# precedência sobre o token de assinatura quando ambas estão setadas).
+
+_fenor_claude_setting() {
+    local key="$1" val
+    val=$(grep -m1 "^${key}=" /etc/fenor/ttyd.env 2>/dev/null | cut -d= -f2-)
+    [ -z "$val" ] && val=$(grep -m1 "^${key}=" /etc/fenor/.env 2>/dev/null | cut -d= -f2-)
+    printf '%s' "$val"
+}
+
+CLAUDE_CODE_OAUTH_TOKEN=$(_fenor_claude_setting CLAUDE_CODE_OAUTH_TOKEN)
+if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+    export CLAUDE_CODE_OAUTH_TOKEN
+    unset ANTHROPIC_API_KEY
+else
+    unset CLAUDE_CODE_OAUTH_TOKEN
+    ANTHROPIC_API_KEY=$(_fenor_claude_setting ANTHROPIC_API_KEY)
+    [ -n "$ANTHROPIC_API_KEY" ] && export ANTHROPIC_API_KEY
+fi
+unset -f _fenor_claude_setting

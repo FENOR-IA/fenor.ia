@@ -22,11 +22,16 @@ if (!$app) {
 }
 
 $appSafe  = str_replace('-', '_', $app);
-$modeFile = "/tmp/fenor-session-{$app}";
+$modeFile = "/tmp/fenor-flags/session-{$app}";
 $svcName  = "ttyd-{$appSafe}-dev";
 
+// /tmp/fenor-flags não tem sticky bit: o terminal (rodando como usuário do
+// app) consegue remover o arquivo depois de ler o modo — em /tmp puro
+// (sticky), o rm -f falharia silenciosamente (dono diferente).
+@mkdir('/tmp/fenor-flags', 0777);
+@chmod('/tmp/fenor-flags', 0777);
 file_put_contents($modeFile, $mode);
-chmod($modeFile, 0644);
+chmod($modeFile, 0666);
 
 shell_exec("sudo /bin/systemctl restart {$svcName} 2>&1");
 

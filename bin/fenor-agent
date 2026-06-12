@@ -33,12 +33,11 @@ REPORT="$APP_PATH/memory/agents/${TIPO}-${TODAY}.md"
 
 [ -d "$APP_PATH" ] || { echo "  ✗ App não encontrado: $APP_PATH"; exit 1; }
 
-ANTHROPIC_API_KEY=$(cat /etc/fenor/ttyd.env 2>/dev/null | grep ANTHROPIC_API_KEY | cut -d= -f2 | tr -d ' ')
-[ -z "$ANTHROPIC_API_KEY" ] && \
-  ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /etc/fenor/.env 2>/dev/null | cut -d= -f2 | tr -d ' ')
+# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+source /usr/local/bin/fenor-claude-auth
 
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-  echo "  ✗ ANTHROPIC_API_KEY não configurada. Configure em Studio → Settings."
+if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+  echo "  ✗ Credenciais do Claude não configuradas. Configure em Studio → Settings → Claude (token de assinatura recomendado)."
   exit 1
 fi
 
@@ -68,7 +67,6 @@ echo "  Fenor Agent — $TIPO em $APP ($ENV)"
 echo "  Relatório: $REPORT"
 echo ""
 
-export ANTHROPIC_API_KEY
 cd "$APP_PATH"
 
 claude -p "$PROMPT" \

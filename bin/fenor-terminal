@@ -4,21 +4,41 @@
 # Se /tmp/fenor-session-APP existir, abre no modo definido. Caso contrário, bash normal.
 
 APP=$1
-MODE_FILE="/tmp/fenor-session-${APP}"
+MODE_FILE="/tmp/fenor-flags/session-${APP}"
+# Fica numa subpasta sem sticky bit: com fs.protected_regular (padrão no
+# Ubuntu), abrir p/ escrita um arquivo de outro dono direto em /tmp (sticky)
+# dá EACCES mesmo com 0666. Numa subpasta 0777 sem sticky, o modo do arquivo
+# já basta.
+SETUP_TOKEN_FLAG="/tmp/fenor-flags/setup-token"
 
-# Carrega a API key explicitamente (não depende só do EnvironmentFile do systemd)
-_load_key() {
-    local val
-    val=$(grep -m1 '^ANTHROPIC_API_KEY=' "$1" 2>/dev/null | cut -d= -f2-)
-    [ -n "$val" ] && export ANTHROPIC_API_KEY="$val"
-}
-[ -z "$ANTHROPIC_API_KEY" ] && _load_key /etc/fenor/ttyd.env
-[ -z "$ANTHROPIC_API_KEY" ] && _load_key /etc/fenor/.env
+# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+source /usr/local/bin/fenor-claude-auth
+
+# Acionado pelo botão "Gerar token" em Studio > Settings > Claude
+if [ -s "$SETUP_TOKEN_FLAG" ]; then
+    : > "$SETUP_TOKEN_FLAG" 2>/dev/null  # limpa o conteúdo (arquivo é 0666; evita sticky bit de /tmp no rm)
+    unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
+    echo "=================================================="
+    echo " Gerando token de assinatura do Claude"
+    echo "=================================================="
+    echo " 1) Clique no link de autorização que vai aparecer abaixo"
+    echo " 2) Faça login com sua conta Claude (Pro ou Max)"
+    echo " 3) Volte aqui: vai aparecer um código (sk-ant-oat...)"
+    echo " 4) Copie esse código e cole em Studio > Settings > Claude"
+    echo "=================================================="
+    echo
+    claude setup-token
+    echo
+    echo "=================================================="
+    echo " Pronto! Copie o código acima e cole em"
+    echo " Studio > Settings > Claude > Token de assinatura"
+    echo "=================================================="
+fi
 
 if [ -n "$APP" ] && [ -f "$MODE_FILE" ]; then
     APP_SAFE=$(echo "$APP" | tr '-' '_')
     MODE=$(cat "$MODE_FILE" | tr -d '[:space:]')
-    rm -f "$MODE_FILE"
+    rm -f "$MODE_FILE" 2>/dev/null
 
     _do_save() {
         /usr/local/bin/fenor-save-session "$APP_SAFE" dev 2>/dev/null

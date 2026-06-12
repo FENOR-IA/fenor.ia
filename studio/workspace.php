@@ -111,6 +111,8 @@ $rules = $rules ?? '';
 $planFile    = "$appPath/memory/plan.md";
 $planContent = file_exists($planFile) ? file_get_contents($planFile) : '';
 $hasPlan     = $planContent !== '' && strpos($planContent, 'Ainda não definido') === false;
+
+$claudeConfigured = fenorClaudeConfigured();
 ?>
 <!DOCTYPE html>
 <html lang="en" data-lang="pt">
@@ -891,7 +893,25 @@ $hasPlan     = $planContent !== '' && strpos($planContent, 'Ainda não definido'
 
     <!-- Session panel -->
     <div id="session-panel" class="ws-tab-content">
-      <?php if ($termUrl): ?>
+      <?php if ($termUrl && !$claudeConfigured): ?>
+
+        <!-- Claude não configurado: bloqueia Planejador e Executor -->
+        <div class="mode-select-screen" style="flex:1;">
+          <div class="mode-select-inner">
+            <div class="mode-select-title">
+              <i data-lucide="lock" style="width:20px;height:20px;stroke:var(--muted);"></i>
+              <span data-pt="Claude não configurado" data-en="Claude not configured">Claude não configurado</span>
+            </div>
+            <p style="font-size:.8rem;color:var(--muted);line-height:1.6;margin-bottom:1.5rem;"
+               data-pt="Configure o token de assinatura do Claude em Settings para liberar o Planejador e o Executor."
+               data-en="Set up your Claude subscription token in Settings to unlock the Planner and Executor.">
+              Configure o token de assinatura do Claude em Settings para liberar o Planejador e o Executor.
+            </p>
+            <a href="settings.php" class="btn btn-primary" data-pt="Configurar Claude →" data-en="Set up Claude →">Configurar Claude →</a>
+          </div>
+        </div>
+
+      <?php elseif ($termUrl): ?>
 
         <!-- Barra de troca de modo (visível quando terminal está aberto) -->
         <div id="mode-switch-bar" class="mode-switch-bar">

@@ -16,11 +16,9 @@ APP_PATH="${APPS_PATH:-/var/www}/$ENV/$APP"
 
 [ -d "$APP_PATH" ] || { echo "App não encontrado: $APP_PATH"; exit 1; }
 
-ANTHROPIC_API_KEY=$(cat /etc/fenor/ttyd.env 2>/dev/null | grep ANTHROPIC_API_KEY | cut -d= -f2 | tr -d ' ')
-[ -z "$ANTHROPIC_API_KEY" ] && \
-  ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY /etc/fenor/.env 2>/dev/null | cut -d= -f2 | tr -d ' ')
+# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+source /usr/local/bin/fenor-claude-auth
 
-export ANTHROPIC_API_KEY
 export APP_SAFE
 
 cd "$APP_PATH"
