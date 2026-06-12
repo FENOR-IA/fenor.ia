@@ -18,10 +18,10 @@ LOG="$APP_PATH/memory/log/$TODAY.md"
 [ -d "$APP_PATH" ] || exit 0
 [ -f "$LOG" ]      || exit 0
 
-# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+# Carrega credenciais do Claude Code (token de assinatura)
 source /usr/local/bin/fenor-claude-auth
 
-[ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ] && exit 0
+[ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && exit 0
 
 cd "$APP_PATH"
 

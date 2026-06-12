@@ -10,7 +10,6 @@ source /etc/fenor/.env
 # Read settings from database
 GITHUB_TOKEN=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='GITHUB_TOKEN'\"" 2>/dev/null | tr -d ' \n')
 GITHUB_ORG=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='GITHUB_ORG'\"" 2>/dev/null | tr -d ' \n')
-ANTHROPIC_API_KEY=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='ANTHROPIC_API_KEY'\"" 2>/dev/null | tr -d ' \n')
 APPS_HTTPS=$(su - postgres -c "psql -d fenor -t -c \"SELECT value FROM fenor_settings WHERE key='APPS_HTTPS'\"" 2>/dev/null | tr -d ' \n')
 
 if [ -z "$APP" ]; then
@@ -88,12 +87,6 @@ echo "  ✓ Database: schema $DB_SCHEMA"
 for TERM_PORT in $(seq 7700 7999); do
   ss -tlnp | grep -q ":$TERM_PORT " || break
 done
-
-# Update /etc/fenor/ttyd.env with the current API key
-if [ -n "$ANTHROPIC_API_KEY" ]; then
-  echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > /etc/fenor/ttyd.env
-  chmod 644 /etc/fenor/ttyd.env
-fi
 
 if [ -d /run/systemd/system ]; then
   cat > /etc/systemd/system/ttyd-${APP_SAFE}-dev.service <<UNIT

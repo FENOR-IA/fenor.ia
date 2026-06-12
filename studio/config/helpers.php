@@ -32,8 +32,7 @@ function loadApps(string $appsPath): array {
 }
 
 function fenorClaudeConfigured(): bool {
-    return trim(fenorSetting('CLAUDE_CODE_OAUTH_TOKEN', '')) !== ''
-        || trim(fenorSetting('ANTHROPIC_API_KEY', '')) !== '';
+    return trim(fenorSetting('CLAUDE_CODE_OAUTH_TOKEN', '')) !== '';
 }
 
 function nextEnv(array $app): ?string {

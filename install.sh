@@ -363,7 +363,7 @@ INSERT INTO fenor_settings (key, value) VALUES
     ('TERMINAL_URL','http://$SERVER_IP/terminal/'),
     ('CF_TOKEN',''),('CF_ZONE_ID',''),('CF_TUNNEL_ID',''),
     ('GITHUB_TOKEN',''),('GITHUB_ORG',''),
-    ('ANTHROPIC_API_KEY',''),('CLAUDE_CODE_OAUTH_TOKEN','')
+    ('CLAUDE_CODE_OAUTH_TOKEN','')
 ON CONFLICT (key) DO NOTHING;
 CREATE TABLE IF NOT EXISTS fenor_apps (
     id           SERIAL PRIMARY KEY,

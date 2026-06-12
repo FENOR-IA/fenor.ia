@@ -17,7 +17,7 @@ $_templates        = file_exists($_templatesIndex)
     : [];
 
 // Atualiza /etc/fenor/ttyd.env com o token de assinatura (read-modify-write —
-// preserva ANTHROPIC_API_KEY legado, se houver) e reinicia os terminais
+// preserva outras linhas existentes) e reinicia os terminais
 function fenorSyncClaudeTtydEnv($token) {
     $current = [];
     foreach (@file('/etc/fenor/ttyd.env', FILE_IGNORE_NEW_LINES) ?: [] as $line) {

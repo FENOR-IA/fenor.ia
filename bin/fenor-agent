@@ -33,11 +33,11 @@ REPORT="$APP_PATH/memory/agents/${TIPO}-${TODAY}.md"
 
 [ -d "$APP_PATH" ] || { echo "  ✗ App não encontrado: $APP_PATH"; exit 1; }
 
-# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+# Carrega credenciais do Claude Code (token de assinatura)
 source /usr/local/bin/fenor-claude-auth
 
-if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
-  echo "  ✗ Credenciais do Claude não configuradas. Configure em Studio → Settings → Claude (token de assinatura recomendado)."
+if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+  echo "  ✗ Credenciais do Claude não configuradas. Configure em Studio → Settings → Claude."
   exit 1
 fi
 

@@ -11,13 +11,13 @@ MODE_FILE="/tmp/fenor-flags/session-${APP}"
 # já basta.
 SETUP_TOKEN_FLAG="/tmp/fenor-flags/setup-token"
 
-# Carrega credenciais do Claude Code (prioriza token de assinatura sobre API key)
+# Carrega credenciais do Claude Code (token de assinatura)
 source /usr/local/bin/fenor-claude-auth
 
 # Acionado pelo botão "Gerar token" em Studio > Settings > Claude
 if [ -s "$SETUP_TOKEN_FLAG" ]; then
     : > "$SETUP_TOKEN_FLAG" 2>/dev/null  # limpa o conteúdo (arquivo é 0666; evita sticky bit de /tmp no rm)
-    unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
+    unset CLAUDE_CODE_OAUTH_TOKEN
     echo "=================================================="
     echo " Gerando token de assinatura do Claude"
     echo "=================================================="

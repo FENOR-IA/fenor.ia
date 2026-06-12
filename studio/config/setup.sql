@@ -20,7 +20,6 @@ INSERT INTO fenor_settings (key, value) VALUES
   , ('CF_TUNNEL_ID',         '')
   , ('GITHUB_TOKEN',         '')
   , ('GITHUB_ORG',           '')
-  , ('ANTHROPIC_API_KEY',    '')
   , ('CLAUDE_CODE_OAUTH_TOKEN', '')
 ON CONFLICT (key) DO NOTHING;
 
