@@ -17,7 +17,10 @@ $_templates        = file_exists($_templatesIndex)
     : [];
 
 // Atualiza /etc/fenor/ttyd.env com o token de assinatura (read-modify-write —
-// preserva outras linhas existentes) e reinicia os terminais
+// preserva outras linhas existentes) e reinicia os terminais.
+// Retorna false se a escrita falhar (ex.: sudoers sem permissão para `tee`) —
+// nesse caso o estado salvo no banco não deve ser alterado, pra não marcar
+// "Configurado" na UI enquanto o terminal continua sem o token.
 function fenorSyncClaudeTtydEnv($token) {
     $current = [];
     foreach (@file('/etc/fenor/ttyd.env', FILE_IGNORE_NEW_LINES) ?: [] as $line) {
@@ -36,14 +39,15 @@ function fenorSyncClaudeTtydEnv($token) {
     $proc = proc_open('sudo /usr/bin/tee /etc/fenor/ttyd.env', [
         0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w'],
     ], $pipes);
-    if (is_resource($proc)) {
-        fwrite($pipes[0], $out);
-        fclose($pipes[0]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($proc);
-    }
+    if (!is_resource($proc)) return false;
+    fwrite($pipes[0], $out);
+    fclose($pipes[0]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    if (proc_close($proc) !== 0) return false;
+
     shell_exec('sudo systemctl restart "ttyd-*.service" 2>/dev/null &');
+    return true;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -57,9 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = strpos($token, '#') !== false
                 ? 'Esse parece ser o código de autorização — ele deve ser colado de volta no terminal, onde o "claude setup-token" está esperando (não aqui). Depois disso, copie a linha que começa com "sk-ant-oat..." e cole aqui.'
                 : 'Token inválido — o token de assinatura do Claude começa com "sk-ant-oat...". Confira se copiou a linha completa do terminal.';
+        } elseif (!fenorSyncClaudeTtydEnv($token)) {
+            $error = 'Não foi possível salvar o token no servidor (erro de permissão ao gravar /etc/fenor/ttyd.env). Contate o suporte.';
         } else {
             saveSetting('CLAUDE_CODE_OAUTH_TOKEN', $token);
-            fenorSyncClaudeTtydEnv($token);
             $success = 'Token salvo.';
             $config  = config();
         }
