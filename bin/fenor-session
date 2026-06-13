@@ -37,7 +37,7 @@ case "$MODE" in
     echo "  Abrindo modo PLANEJADOR — leitura + planejamento, sem editar código"
     echo ""
     claude \
-      --disallowedTools "Edit,Write,MultiEdit,NotebookEdit,Bash(git commit*),Bash(git push*),Bash(rm *)" \
+      --disallowedTools "Edit,Write,NotebookEdit,Bash(git commit*),Bash(git push*),Bash(rm *)" \
       --append-system-prompt "$(cat .claude/commands/planner.md 2>/dev/null || echo 'Modo Planejador: leia o código, escreva o plano em memory/plan.md. Não edite código.')"
     echo ""
     echo "  Sessão Planejador encerrada. Terminal disponível."
@@ -48,7 +48,7 @@ case "$MODE" in
     echo "  Abrindo modo REVISOR — análise sem editar código"
     echo ""
     claude \
-      --disallowedTools "Edit,Write,MultiEdit,NotebookEdit,Bash(git commit*),Bash(git push*),Bash(rm *)" \
+      --disallowedTools "Edit,Write,NotebookEdit,Bash(git commit*),Bash(git push*),Bash(rm *)" \
       --append-system-prompt "$(cat .claude/commands/reviewer.md 2>/dev/null || echo 'Modo Revisor: analise o código e documente problemas em memory/agents/. Não edite código.')"
     echo ""
     echo "  Sessão Revisor encerrada. Terminal disponível."
